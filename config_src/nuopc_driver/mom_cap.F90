@@ -468,6 +468,8 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
            call set_calendar_type (NOLEAP)
         case ("GREGORIAN")
            call set_calendar_type (GREGORIAN)
+        case ("JULIAN")
+           call set_calendar_type (JULIAN)
         case default
            call ESMF_LogSetError(ESMF_RC_ARG_BAD, &
               msg=subname//": Calendar not supported in MOM6: "//trim(calendar), &
