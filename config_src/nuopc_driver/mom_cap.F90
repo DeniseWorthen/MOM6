@@ -458,29 +458,25 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
   call field_manager_init
 
   ! determine the calendar
-  if (cesm_coupled) then
-     call NUOPC_CompAttributeGet(gcomp, name="calendar", value=cvalue, &
-          isPresent=isPresent, isSet=isSet, rc=rc)
-     if (ChkErr(rc,__LINE__,u_FILE_u)) return
-     if (isPresent .and. isSet) then
-        read(cvalue,*) calendar
-        select case (trim(calendar))
-           case ("NO_LEAP")
-              call set_calendar_type (NOLEAP)
-           case ("GREGORIAN")
-              call set_calendar_type (GREGORIAN)
-           case default
-              call ESMF_LogSetError(ESMF_RC_ARG_BAD, &
-                 msg=subname//": Calendar not supported in MOM6: "//trim(calendar), &
-                 line=__LINE__, file=__FILE__, rcToReturn=rc)
-           end select
-     else
-        call set_calendar_type (NOLEAP)
-     endif
-
+  call NUOPC_CompAttributeGet(gcomp, name="calendar", value=cvalue, &
+       isPresent=isPresent, isSet=isSet, rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  if (isPresent .and. isSet) then
+     read(cvalue,*) calendar
+     select case (trim(calendar))
+        case ("NO_LEAP")
+           call set_calendar_type (NOLEAP)
+        case ("GREGORIAN")
+           call set_calendar_type (GREGORIAN)
+        case default
+           call ESMF_LogSetError(ESMF_RC_ARG_BAD, &
+              msg=subname//": Calendar not supported in MOM6: "//trim(calendar), &
+              line=__LINE__, file=__FILE__, rcToReturn=rc)
+        end select
   else
-     call set_calendar_type (JULIAN)
+     call set_calendar_type (NOLEAP)
   endif
+
 
   call diag_manager_init
 
