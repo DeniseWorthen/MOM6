@@ -28,10 +28,8 @@ use MOM_cap_time,             only: AlarmInit
 use MOM_cap_methods,          only: mom_import, mom_export, mom_set_geomtype, mod2med_areacor
 use MOM_cap_methods,          only: med2mod_areacor, state_diagnose
 use MOM_cap_methods,          only: ChkErr
-
-#ifdef CESMCOUPLED
-use shr_log_mod,             only: shr_log_setLogUnit
-#endif
+use mom_wrapper_mod,          only: shr_log_setLogUnit, ufs_settimer, ufs_logtimer, ufs_file_setlogunit
+use mom_wrapper_mod,          only: wtime
 use time_utils_mod,           only: esmf2fms_time
 
 use, intrinsic :: iso_fortran_env, only: output_unit
@@ -136,6 +134,7 @@ character(len=128)   :: scalar_field_name = ''
 integer              :: scalar_field_count = 0
 integer              :: scalar_field_idx_grid_nx = 0
 integer              :: scalar_field_idx_grid_ny = 0
+integer              :: nu_timer !< Simple timer log
 character(len=*),parameter :: u_FILE_u = &
      __FILE__
 
@@ -148,6 +147,8 @@ type(ESMF_GeomType_Flag) :: geomtype
 #endif
 character(len=8) :: restart_mode = 'alarms'
 
+type(ESMF_TimeInterval) :: time_elapsed
+integer(ESMF_KIND_I8)   :: time_elapsed_sec
 contains
 
 !> NUOPC SetService method is the only public entry point.
@@ -427,6 +428,7 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
   rc = ESMF_SUCCESS
 
   call ESMF_LogWrite(subname//' enter', ESMF_LOGMSG_INFO)
+  call ufs_settimer(wtime)
 
   allocate(Ice_ocean_boundary)
   !allocate(ocean_state) ! ocean_model_init allocate this pointer
@@ -472,6 +474,7 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
     stdout = output_unit
   endif
   call shr_log_setLogUnit(stdout)
+  call ufs_file_setLogUnit('./log.mom.timer', nu_timer)
   call NUOPC_CompAttributeAdd(gcomp, (/"logunit"/), rc=rc)
   if (chkerr(rc,__LINE__,u_FILE_u)) return
   call NUOPC_CompAttributeSet(gcomp, "logunit", stdout, rc=rc)
@@ -774,7 +777,9 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
     call NUOPC_Advertise(exportState, standardName=fldsFrOcn(n)%stdname, name=fldsFrOcn(n)%shortname, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
   enddo
-  if(is_root_pe()) write(stdout,*) 'InitializeAdvertise complete'
+  if (is_root_pe()) write(stdout,*) 'InitializeAdvertise complete'
+  if (is_root_pe()) call ufs_logtimer(nu_timer,msec,'InitializeAdvertise time: ',wtime)
+
 end subroutine InitializeAdvertise
 
 !> Called by NUOPC to realize import and export fields.  "Realizing" a field
@@ -861,6 +866,7 @@ subroutine InitializeRealize(gcomp, importState, exportState, clock, rc)
   rc = ESMF_SUCCESS
 
   call shr_log_setLogUnit (stdout)
+  call ufs_settimer(wtime)
 
   !----------------------------------------------------------------------------
   ! Get pointers to ocean internal state
@@ -1350,6 +1356,7 @@ subroutine InitializeRealize(gcomp, importState, exportState, clock, rc)
   !     timeslice=1, relaxedFlag=.true., rc=rc)
   !if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+  if (is_root_pe()) call ufs_logtimer(nu_timer,msec,'InitializeRealize time: ',wtime)
 end subroutine InitializeRealize
 
 !> TODO
@@ -1379,6 +1386,8 @@ subroutine DataInitialize(gcomp, rc)
   character(len=64),allocatable          :: fieldNameList(:)
   character(len=*),parameter  :: subname='(MOM_cap:DataInitialize)'
   !--------------------------------
+
+  call ufs_settimer(wtime)
 
   ! query the Component for its clock, importState and exportState
   call ESMF_GridCompGet(gcomp, clock=clock, importState=importState, exportState=exportState, rc=rc)
@@ -1439,6 +1448,7 @@ subroutine DataInitialize(gcomp, rc)
       endif
     enddo
   endif
+  if (is_root_pe()) call ufs_logtimer(nu_timer,msec,'DataInitialize time: ',wtime)
 
 end subroutine DataInitialize
 
@@ -1460,8 +1470,6 @@ subroutine ModelAdvance(gcomp, rc)
   type(ESMF_Time)                        :: currTime
   type(ESMF_TimeInterval)                :: timeStep
   type(ESMF_Time)                        :: startTime
-  type(ESMF_TimeInterval)                :: time_elapsed
-  integer(ESMF_KIND_I8)                  :: n_interval, time_elapsed_sec
   type(ESMF_Field)                       :: lfield
   type(ESMF_StateItem_Flag)              :: itemType
   character(len=64)                      :: timestamp
@@ -1495,6 +1503,8 @@ subroutine ModelAdvance(gcomp, rc)
   if(profile_memory) call ESMF_VMLogMemInfo("Entering MOM Model_ADVANCE: ")
 
   call shr_log_setLogUnit (stdout)
+  if (is_root_pe())call ufs_logtimer(nu_timer,msec,'ModelAdvance time since last step: ',wtime)
+  call ufs_settimer(wtime)
 
   ! query the Component for its clock, importState and exportState
   call ESMF_GridCompGet(gcomp, clock=clock, importState=importState, &
@@ -1727,7 +1737,7 @@ subroutine ModelAdvance(gcomp, rc)
   endif
 
   if(profile_memory) call ESMF_VMLogMemInfo("Leaving MOM Model_ADVANCE: ")
-
+  if (is_root_pe()) call ufs_logtimer(nu_timer,msec,'ModelAdvance time: ', wtime)
 end subroutine ModelAdvance
 
 
@@ -1933,6 +1943,7 @@ subroutine ocean_model_finalize(gcomp, rc)
     write(stdout,*) 'MOM: --- finalize called ---'
   endif
   rc = ESMF_SUCCESS
+  call ufs_settimer(wtime)
 
   call ESMF_GridCompGetInternalState(gcomp, ocean_internalstate, rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -1965,6 +1976,7 @@ subroutine ocean_model_finalize(gcomp, rc)
     write(stdout,*) 'MOM: --- completed ---'
   endif
 
+  if (is_root_pe()) call ufs_logtimer(nu_timer,msec,'ModelFinalize time: ', wtime)
 end subroutine ocean_model_finalize
 
 
@@ -2171,16 +2183,6 @@ subroutine fld_list_add(num, fldlist, stdname, transferOffer, shortname, ungridd
   end if
 
 end subroutine fld_list_add
-
-
-#ifndef CESMCOUPLED
-subroutine shr_log_setLogUnit(nunit)
-  integer, intent(in) :: nunit
-  ! do nothing for this stub - its just here to replace
-  ! having cppdefs in the main program
-end subroutine shr_log_setLogUnit
-#endif
-
 !>
 !! @page nuopc_cap NUOPC Cap
 !! @author Fei Liu (fei.liu@gmail.com)
