@@ -146,11 +146,9 @@ logical :: cesm_coupled = .false.
 type(ESMF_GeomType_Flag) :: geomtype
 #endif
 character(len=8) :: restart_mode = 'alarms'
+integer(ESMF_KIND_I8)   :: msec
 
-type(ESMF_TimeInterval) :: time_elapsed
-integer(ESMF_KIND_I8)   :: time_elapsed_sec
 contains
-
 !> NUOPC SetService method is the only public entry point.
 !! SetServices registers all of the user-provided subroutines
 !! in the module with the NUOPC layer.
@@ -364,7 +362,7 @@ subroutine InitializeP0(gcomp, importState, exportState, clock, rc)
     geomtype = ESMF_GEOMTYPE_GRID
   endif
 
-end subroutine
+end subroutine InitializeP0
 
 !> Called by NUOPC to advertise import and export fields.  "Advertise"
 !! simply means that the standard names of all import and export
@@ -452,6 +450,7 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
 
   CALL ESMF_TimeIntervalGet(TINT, S=DT_OCEAN, RC=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
 
   ! reset shr logging to my log file
   if (localPet==0) then
@@ -778,6 +777,7 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
   enddo
   if (is_root_pe()) write(stdout,*) 'InitializeAdvertise complete'
+  msec = 0
   if (is_root_pe()) call ufs_logtimer(nu_timer,msec,'InitializeAdvertise time: ',wtime)
 
 end subroutine InitializeAdvertise
@@ -1356,7 +1356,9 @@ subroutine InitializeRealize(gcomp, importState, exportState, clock, rc)
   !     timeslice=1, relaxedFlag=.true., rc=rc)
   !if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+  msec = 0
   if (is_root_pe()) call ufs_logtimer(nu_timer,msec,'InitializeRealize time: ',wtime)
+
 end subroutine InitializeRealize
 
 !> TODO
@@ -1448,6 +1450,7 @@ subroutine DataInitialize(gcomp, rc)
       endif
     enddo
   endif
+  msec = 0
   if (is_root_pe()) call ufs_logtimer(nu_timer,msec,'DataInitialize time: ',wtime)
 
 end subroutine DataInitialize
@@ -1502,6 +1505,7 @@ subroutine ModelAdvance(gcomp, rc)
   rc = ESMF_SUCCESS
   if(profile_memory) call ESMF_VMLogMemInfo("Entering MOM Model_ADVANCE: ")
 
+  call get_elapsed_secs(clock,  msec, rc=rc)
   call shr_log_setLogUnit (stdout)
   if (is_root_pe())call ufs_logtimer(nu_timer,msec,'ModelAdvance time since last step: ',wtime)
   call ufs_settimer(wtime)
@@ -1737,6 +1741,7 @@ subroutine ModelAdvance(gcomp, rc)
   endif
 
   if(profile_memory) call ESMF_VMLogMemInfo("Leaving MOM Model_ADVANCE: ")
+  call get_elapsed_secs(clock,  msec, rc=rc)
   if (is_root_pe()) call ufs_logtimer(nu_timer,msec,'ModelAdvance time: ', wtime)
 end subroutine ModelAdvance
 
@@ -1976,6 +1981,7 @@ subroutine ocean_model_finalize(gcomp, rc)
     write(stdout,*) 'MOM: --- completed ---'
   endif
 
+  call get_elapsed_secs(clock,  msec, rc=rc)
   if (is_root_pe()) call ufs_logtimer(nu_timer,msec,'ModelFinalize time: ', wtime)
 end subroutine ocean_model_finalize
 
@@ -2183,6 +2189,30 @@ subroutine fld_list_add(num, fldlist, stdname, transferOffer, shortname, ungridd
   end if
 
 end subroutine fld_list_add
+
+!===============================================================================
+
+!> Obtain the current elapsed seconds
+subroutine get_elapsed_secs(clock, time_elapsed_secs, rc)
+  type(ESMF_Clock)      :: clock                    !< ESMF_Clock object
+  integer(ESMF_KIND_I8) :: time_elapsed_secs        !< elapsed seconds, currTime - startTime
+  integer, intent(out)  :: rc                       !< return code
+
+  ! local variables
+  type(ESMF_Time) :: nexttime
+  type(ESMF_Time) :: starttime
+  type(ESMF_TimeInterval) :: time_elapsed
+
+  ! Clock is not advanced until end of ModelAdvance, use nextTime
+  call ESMF_ClockGetNextTime(clock, nexttime, rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  call ESMF_ClockGet(clock, startTime=starttime, rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  time_elapsed = nexttime - starttime
+  call ESMF_TimeIntervalGet(time_elapsed, s_i8=time_elapsed_secs, rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+end subroutine get_elapsed_secs
 !>
 !! @page nuopc_cap NUOPC Cap
 !! @author Fei Liu (fei.liu@gmail.com)
