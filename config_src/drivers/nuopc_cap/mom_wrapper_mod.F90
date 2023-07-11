@@ -2,8 +2,8 @@ module mom_wrapper_mod
 
   use ESMF          , only : ESMF_KIND_I8, ESMF_KIND_R8
 #ifdef CESMCOUPLED
-  use perf_mod      , only : t_startf, t_stopf, t_barrierf
-  use shr_file_mod  , only : shr_file_getlogunit, shr_file_setlogunit
+!  use perf_mod      , only : t_startf, t_stopf, t_barrierf
+!  use shr_file_mod  , only : shr_file_getlogunit, shr_file_setlogunit
   use shr_log_mod   , only : shr_log_setLogUnit
 
   implicit none
@@ -24,10 +24,9 @@ contains
     character(len=*),      intent(in)    :: filename
     integer,               intent(out)   :: nunit
   end subroutine ufs_file_setLogUnit
-  subroutine ufs_logfhour(date,esecs,hour)
-    integer,               intent(in)    :: date
-    integer(ESMF_KIND_I8), intent(in)    :: esecs
-    real,                  intent(in)    :: hour
+  subroutine ufs_logfhour(msg,hour)
+    character(len=*),      intent(in)    :: msg
+    real(ESMF_KIND_R8),    intent(in)    :: hour
   end subroutine ufs_logfhour
 #else
 
@@ -59,17 +58,29 @@ contains
     open (newunit=nunit, file=trim(filename))
   end subroutine ufs_file_setLogUnit
 
-  subroutine ufs_logfhour(date,esecs,hour)
-    integer,               intent(in)    :: date
-    integer(ESMF_KIND_I8), intent(in)    :: esecs
-    real,                  intent(in)    :: hour
+  subroutine ufs_logfhour(msg,hour)
+    character(len=*),      intent(in)    :: msg
+    real(ESMF_KIND_R8),    intent(in)    :: hour
     character(len=80)                    :: filename
-    integer                              :: nunit
-    write(filename,'(a,i3.3)')'log.mom.f',int(hour)
+    integer(ESMF_KIND_I8)                :: nunit
+    write(filename,'(a,i3.3)')'log.ice.f',int(hour)
     open(newunit=nunit,file=trim(filename))
-    write(nunit,'(a,f8.2,a,2i10)')'completed MOM fhour = ',hour,' complete ',date,esecs
+    write(nunit,'(a)')'completed: mom6'
+    write(nunit,'(a,f10.3)')'forecast hour:',hour
+    write(nunit,'(a)')'valid time: '//trim(msg)
     close(nunit)
   end subroutine ufs_logfhour
+  ! subroutine ufs_logfhour(date,esecs,hour)
+  !   integer,               intent(in)    :: date
+  !   integer(ESMF_KIND_I8), intent(in)    :: esecs
+  !   real,                  intent(in)    :: hour
+  !   character(len=80)                    :: filename
+  !   integer                              :: nunit
+  !   write(filename,'(a,i3.3)')'log.mom.f',int(hour)
+  !   open(newunit=nunit,file=trim(filename))
+  !   write(nunit,'(a,f8.2,a,2i10)')'completed MOM fhour = ',hour,' complete ',date,esecs
+  !   close(nunit)
+  ! end subroutine ufs_logfhour
 
   ! Define stub routines that do nothing - they are just here to avoid
   ! having cppdefs in the main program
