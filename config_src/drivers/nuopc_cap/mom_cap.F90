@@ -473,7 +473,7 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
     stdout = output_unit
   endif
   call shr_log_setLogUnit(stdout)
-  call ufs_file_setLogUnit('./log.mom.timer', nu_timer)
+  call ufs_file_setLogUnit('./log.ocn.timer', nu_timer)
   call NUOPC_CompAttributeAdd(gcomp, (/"logunit"/), rc=rc)
   if (chkerr(rc,__LINE__,u_FILE_u)) return
   call NUOPC_CompAttributeSet(gcomp, "logunit", stdout, rc=rc)
@@ -1481,6 +1481,7 @@ subroutine ModelAdvance(gcomp, rc)
   type(time_type)                        :: Time
   type(time_type)                        :: Time_step_coupled
   type(time_type)                        :: Time_restart_current
+  integer                                :: dt_ocean
   integer                                :: nc
   type(ESMF_Time)                        :: MyTime
   integer                                :: seconds, day, year, month, hour, minute
@@ -1501,15 +1502,16 @@ subroutine ModelAdvance(gcomp, rc)
   rc = ESMF_SUCCESS
   if(profile_memory) call ESMF_VMLogMemInfo("Entering MOM Model_ADVANCE: ")
 
-  call get_elapsed_secs(clock, msec, rc=rc)
   call shr_log_setLogUnit (stdout)
-  if (is_root_pe())call ufs_logtimer(nu_timer, msec, 'ModelAdvance time since last step: ', wtime)
-  call ufs_settimer(wtime)
 
   ! query the Component for its clock, importState and exportState
   call ESMF_GridCompGet(gcomp, clock=clock, importState=importState, &
     exportState=exportState, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+  call get_elapsed_secs(clock, msec, rc=rc)
+  if (is_root_pe())call ufs_logtimer(nu_timer, msec, 'ModelAdvance time since last step: ', wtime)
+  call ufs_settimer(wtime)
 
   ! HERE THE MODEL ADVANCES: currTime -> currTime + timeStep
 
@@ -1532,6 +1534,8 @@ subroutine ModelAdvance(gcomp, rc)
 
   Time_step_coupled = esmf2fms_time(timeStep)
   Time = esmf2fms_time(currTime)
+  call ESMF_TimeIntervalGet(timestep, s=dt_ocean, rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
   !---------------
   ! Apply ocean lag for startup runs:
@@ -1737,7 +1741,7 @@ subroutine ModelAdvance(gcomp, rc)
   endif
 
   if(profile_memory) call ESMF_VMLogMemInfo("Leaving MOM Model_ADVANCE: ")
-  if (is_root_pe()) call ufs_logtimer(nu_timer, msec+timestep, 'ModelAdvance time: ', wtime)
+  if (is_root_pe()) call ufs_logtimer(nu_timer, msec+dt_ocean, 'ModelAdvance time: ', wtime)
 end subroutine ModelAdvance
 
 

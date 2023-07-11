@@ -2,6 +2,7 @@ module mom_wrapper_mod
 
   use ESMF          , only : ESMF_KIND_I8, ESMF_KIND_R8
 #ifdef CESMCOUPLED
+! these are not currently implemented in the MOM6 cap
 !  use perf_mod      , only : t_startf, t_stopf, t_barrierf
 !  use shr_file_mod  , only : shr_file_getlogunit, shr_file_setlogunit
   use shr_log_mod   , only : shr_log_setLogUnit
@@ -70,39 +71,28 @@ contains
     write(nunit,'(a)')'valid time: '//trim(msg)
     close(nunit)
   end subroutine ufs_logfhour
-  ! subroutine ufs_logfhour(date,esecs,hour)
-  !   integer,               intent(in)    :: date
-  !   integer(ESMF_KIND_I8), intent(in)    :: esecs
-  !   real,                  intent(in)    :: hour
-  !   character(len=80)                    :: filename
-  !   integer                              :: nunit
-  !   write(filename,'(a,i3.3)')'log.mom.f',int(hour)
-  !   open(newunit=nunit,file=trim(filename))
-  !   write(nunit,'(a,f8.2,a,2i10)')'completed MOM fhour = ',hour,' complete ',date,esecs
-  !   close(nunit)
-  ! end subroutine ufs_logfhour
 
   ! Define stub routines that do nothing - they are just here to avoid
   ! having cppdefs in the main program
   subroutine shr_log_setLogUnit(nunit)
     integer, intent(in) :: nunit
   end subroutine shr_log_setLogUnit
-  subroutine shr_file_setLogUnit(nunit)
-    integer, intent(in) :: nunit
-  end subroutine shr_file_setLogUnit
-  subroutine shr_file_getLogUnit(nunit)
-    integer, intent(in) :: nunit
-  end subroutine shr_file_getLogUnit
-  subroutine t_startf(string)
-    character(len=*) :: string
-  end subroutine t_startf
-  subroutine t_stopf(string)
-    character(len=*) :: string
-  end subroutine t_stopf
-  subroutine t_barrierf(string, comm)
-    character(len=*) :: string
-    integer:: comm
-  end subroutine t_barrierf
+  ! subroutine shr_file_setLogUnit(nunit)
+  !   integer, intent(in) :: nunit
+  ! end subroutine shr_file_setLogUnit
+  ! subroutine shr_file_getLogUnit(nunit)
+  !   integer, intent(in) :: nunit
+  ! end subroutine shr_file_getLogUnit
+  ! subroutine t_startf(string)
+  !   character(len=*) :: string
+  ! end subroutine t_startf
+  ! subroutine t_stopf(string)
+  !   character(len=*) :: string
+  ! end subroutine t_stopf
+  ! subroutine t_barrierf(string, comm)
+  !   character(len=*) :: string
+  !   integer:: comm
+  ! end subroutine t_barrierf
 #endif
 
 end module mom_wrapper_mod
