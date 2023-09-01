@@ -732,14 +732,16 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
   call fld_list_add(fldsToOcn_num, fldsToOcn, "mean_fresh_water_to_ocean_rate", "will provide")
   call fld_list_add(fldsToOcn_num, fldsToOcn, "net_heat_flx_to_ocn"        , "will provide")
 
-  if (cesm_coupled) then
-    call fld_list_add(fldsToOcn_num, fldsToOcn, "heat_content_lprec", "will provide")
-    call fld_list_add(fldsToOcn_num, fldsToOcn, "heat_content_fprec", "will provide")
-    call fld_list_add(fldsToOcn_num, fldsToOcn, "heat_content_evap" , "will provide")
-    call fld_list_add(fldsToOcn_num, fldsToOcn, "heat_content_cond" , "will provide")
-    call fld_list_add(fldsToOcn_num, fldsToOcn, "heat_content_rofl" , "will provide")
-    call fld_list_add(fldsToOcn_num, fldsToOcn, "heat_content_rofi" , "will provide")
-  endif
+  call fld_list_add(fldsToOcn_num, fldsToOcn, "heat_content_lprec", "will provide")
+  call fld_list_add(fldsToOcn_num, fldsToOcn, "heat_content_fprec", "will provide")
+  call fld_list_add(fldsToOcn_num, fldsToOcn, "heat_content_evap" , "will provide")
+  call fld_list_add(fldsToOcn_num, fldsToOcn, "heat_content_cond" , "will provide")
+  call fld_list_add(fldsToOcn_num, fldsToOcn, "heat_content_rofl" , "will provide")
+  call fld_list_add(fldsToOcn_num, fldsToOcn, "heat_content_rofi" , "will provide")
+
+  call fld_list_add(fldsToOcn_num, fldsToOcn, "Faxa_evap"  , "will provide") !-> from atm
+  call fld_list_add(fldsToOcn_num, fldsToOcn, "Faxa_lwnet" , "will provide") !-> from atm
+  call fld_list_add(fldsToOcn_num, fldsToOcn, "Faxa_sen"   , "will provide") !-> from atm
 
   if (use_waves) then
     if (wave_method == "EFACTOR") then
@@ -1596,8 +1598,7 @@ subroutine ModelAdvance(gcomp, rc)
     !---------------
     ! Import data
     !---------------
-
-    call mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary, cesm_coupled, rc=rc)
+    call mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !---------------
