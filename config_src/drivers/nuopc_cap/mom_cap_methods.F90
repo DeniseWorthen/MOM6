@@ -137,7 +137,7 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
   ! -------
   ! Net longwave radiation (W/m2)
   ! -------
-  call state_getimport(importState, 'mean_net_lw_flx',  &
+  call state_getimport(importState, 'Foxx_lwnet',  &
        isc, iec, jsc, jec, ice_ocean_boundary%lw_flux, areacor=med2mod_areacor, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -175,22 +175,22 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
   !----
   ! sensible heat flux (W/m2)
   !----
-  call state_getimport(importState, 'mean_sensi_heat_flx', &
+  call state_getimport(importState, 'Foxx_sen', &
        isc, iec, jsc, jec, ice_ocean_boundary%t_flux, areacor=med2mod_areacor, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-  call state_getimport(importState, 'Faxa_sen', &
+  call state_getimport(importState, 'Faoa_sen', &
        isc, iec, jsc, jec, ice_ocean_boundary%t_flux, areacor=med2mod_areacor, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
   !----
   ! evaporation flux (W/m2)
   !----
-  call state_getimport(importState, 'mean_evap_rate', &
+  call state_getimport(importState, 'Foxx_evap', &
        isc, iec, jsc, jec, ice_ocean_boundary%q_flux, areacor=med2mod_areacor, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-  call state_getimport(importState, 'Faxa_evap', &
+  call state_getimport(importState, 'Faoa_evap', &
        isc, iec, jsc, jec, ice_ocean_boundary%q_flux, areacor=med2mod_areacor, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 

@@ -715,9 +715,9 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
   call fld_list_add(fldsToOcn_num, fldsToOcn, "mean_salt_rate"             , "will provide") ! from ice
   call fld_list_add(fldsToOcn_num, fldsToOcn, "mean_zonal_moment_flx"      , "will provide")
   call fld_list_add(fldsToOcn_num, fldsToOcn, "mean_merid_moment_flx"      , "will provide")
-  call fld_list_add(fldsToOcn_num, fldsToOcn, "mean_sensi_heat_flx"        , "will provide")
-  call fld_list_add(fldsToOcn_num, fldsToOcn, "mean_evap_rate"             , "will provide")
-  call fld_list_add(fldsToOcn_num, fldsToOcn, "mean_net_lw_flx"            , "will provide")
+  call fld_list_add(fldsToOcn_num, fldsToOcn, "Foxx_sen"                   , "will provide")
+  call fld_list_add(fldsToOcn_num, fldsToOcn, "Foxx_evap"                  , "will provide")
+  call fld_list_add(fldsToOcn_num, fldsToOcn, "Foxx_lwnet"                 , "will provide")
   call fld_list_add(fldsToOcn_num, fldsToOcn, "mean_net_sw_vis_dir_flx"    , "will provide")
   call fld_list_add(fldsToOcn_num, fldsToOcn, "mean_net_sw_vis_dif_flx"    , "will provide")
   call fld_list_add(fldsToOcn_num, fldsToOcn, "mean_net_sw_ir_dir_flx"     , "will provide")
@@ -739,9 +739,9 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
   call fld_list_add(fldsToOcn_num, fldsToOcn, "heat_content_rofl" , "will provide")
   call fld_list_add(fldsToOcn_num, fldsToOcn, "heat_content_rofi" , "will provide")
 
-  call fld_list_add(fldsToOcn_num, fldsToOcn, "Faxa_evap"  , "will provide") !-> from atm
+  call fld_list_add(fldsToOcn_num, fldsToOcn, "Faoa_evap"  , "will provide") !-> from atm
   call fld_list_add(fldsToOcn_num, fldsToOcn, "Faxa_lwnet" , "will provide") !-> from atm
-  call fld_list_add(fldsToOcn_num, fldsToOcn, "Faxa_sen"   , "will provide") !-> from atm
+  call fld_list_add(fldsToOcn_num, fldsToOcn, "Faoa_sen"   , "will provide") !-> from atm
 
   if (use_waves) then
     if (wave_method == "EFACTOR") then
