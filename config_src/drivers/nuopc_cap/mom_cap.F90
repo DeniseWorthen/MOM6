@@ -739,9 +739,9 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
   call fld_list_add(fldsToOcn_num, fldsToOcn, "heat_content_rofl" , "will provide")
   call fld_list_add(fldsToOcn_num, fldsToOcn, "heat_content_rofi" , "will provide")
 
-  call fld_list_add(fldsToOcn_num, fldsToOcn, "Faoa_evap"  , "will provide") !-> from atm
+  call fld_list_add(fldsToOcn_num, fldsToOcn, "Faxa_evap"  , "will provide") !-> from atm
   call fld_list_add(fldsToOcn_num, fldsToOcn, "Faxa_lwnet" , "will provide") !-> from atm
-  call fld_list_add(fldsToOcn_num, fldsToOcn, "Faoa_sen"   , "will provide") !-> from atm
+  call fld_list_add(fldsToOcn_num, fldsToOcn, "Faxa_sen"   , "will provide") !-> from atm
 
   if (use_waves) then
     if (wave_method == "EFACTOR") then

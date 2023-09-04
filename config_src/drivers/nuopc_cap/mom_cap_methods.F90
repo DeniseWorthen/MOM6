@@ -179,7 +179,7 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
        isc, iec, jsc, jec, ice_ocean_boundary%t_flux, areacor=med2mod_areacor, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-  call state_getimport(importState, 'Faoa_sen', &
+  call state_getimport(importState, 'Faxa_sen', &
        isc, iec, jsc, jec, ice_ocean_boundary%t_flux, areacor=med2mod_areacor, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -190,7 +190,7 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
        isc, iec, jsc, jec, ice_ocean_boundary%q_flux, areacor=med2mod_areacor, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-  call state_getimport(importState, 'Faoa_evap', &
+  call state_getimport(importState, 'Faxa_evap', &
        isc, iec, jsc, jec, ice_ocean_boundary%q_flux, areacor=med2mod_areacor, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
