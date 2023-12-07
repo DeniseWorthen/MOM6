@@ -774,7 +774,6 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
 
   ! for ocnnst, could be controlled via config
   call fld_list_add(fldsToOcn_num, fldsToOcn, "Faxa_lwdn"      , "will provide")
-  call fld_list_add(fldsToOcn_num, fldsToOcn, "Si_ifrac"       , "will provide")
 
   if (use_waves) then
     if (wave_method == "EFACTOR") then
