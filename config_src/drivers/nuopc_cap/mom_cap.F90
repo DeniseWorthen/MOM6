@@ -979,7 +979,7 @@ subroutine InitializeRealize(gcomp, importState, exportState, clock, rc)
   call get_ocean_grid(ocean_state, ocean_grid)
 
   if (geomtype == ESMF_GEOMTYPE_MESH) then
-
+     print *,'XYXY0'
     !---------------------------------
     ! Create a MOM6 mesh
     !---------------------------------
@@ -1188,7 +1188,7 @@ subroutine InitializeRealize(gcomp, importState, exportState, clock, rc)
     mod2med_areacor(:) = 1._ESMF_KIND_R8
     med2mod_areacor(:) = 1._ESMF_KIND_R8
 
-#ifdef CESMCOUPLED
+!#ifdef CESMCOUPLED
     ! Determine model areas and flux correction factors (module variables in mom_)
     call ESMF_StateGet(exportState, itemName=trim(fldsFrOcn(2)%stdname), field=lfield, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -1224,13 +1224,14 @@ subroutine InitializeRealize(gcomp, importState, exportState, clock, rc)
     call ESMF_VMAllReduce(vm, max_areacor, max_areacor_glob, 2, ESMF_REDUCE_MAX, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    print *,'XYXY ',trim(subname)
     if (localPet == 0) then
       write(stdout,'(2A,2g23.15,A )') trim(subname),' :  min_mod2med_areacor, max_mod2med_areacor ',&
             min_areacor_glob(1), max_areacor_glob(1), 'MOM6'
       write(stdout,'(2A,2g23.15,A )') trim(subname),' :  min_med2mod_areacor, max_med2mod_areacor ',&
             min_areacor_glob(2), max_areacor_glob(2), 'MOM6'
     end if
-#endif
+!#endif
 
     deallocate(ownedElemCoords)
     deallocate(lonMesh , lon )
@@ -1239,6 +1240,7 @@ subroutine InitializeRealize(gcomp, importState, exportState, clock, rc)
 
   else if (geomtype == ESMF_GEOMTYPE_GRID) then
 
+     print *,'XYXYoops '
     !---------------------------------
     ! create a MOM6 grid
     !---------------------------------
