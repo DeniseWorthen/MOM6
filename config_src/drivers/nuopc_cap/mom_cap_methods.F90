@@ -180,6 +180,7 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
   call state_getimport(importState, 'Foxx_evap', isc, iec, jsc, jec, &
        ice_ocean_boundary%q_flux, areacor=med2mod_areacor, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  ice_ocean_boundary%q_flux = 0.0
 
   !----
   ! liquid precipitation (rain)
@@ -187,6 +188,7 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
   call state_getimport(importState, 'Faxa_rain', isc, iec, jsc, jec, &
        ice_ocean_boundary%lprec, areacor=med2mod_areacor, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  ice_ocean_boundary%lprec = 0.0
 
   !----
   ! frozen precipitation (snow)
@@ -194,6 +196,7 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
   call state_getimport(importState, 'Faxa_snow', isc, iec, jsc, jec, &
        ice_ocean_boundary%fprec, areacor=med2mod_areacor, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  ice_ocean_boundary%fprec = 0.0
 
   !----
   ! mass and heat content of liquid and frozen runoff
