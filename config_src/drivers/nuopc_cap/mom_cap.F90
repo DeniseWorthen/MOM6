@@ -94,6 +94,7 @@ use NUOPC_Model, only: SetVM
 #ifndef CESMCOUPLED
   use shr_is_restart_fh_mod, only : init_is_restart_fh, is_restart_fh, is_restart_fh_type
 #endif
+  use mom_inline_mod, only : mom_inline_init, mom_inline_run
 
 implicit none; private
 
@@ -141,6 +142,7 @@ logical              :: grid_attach_area = .false.
 logical              :: use_coldstart = .true.
 logical              :: use_mommesh = .true.
 logical              :: restart_eor = .false.
+character(len=128)   :: streamconfigfile = ''
 character(len=128)   :: scalar_field_name = ''
 integer              :: scalar_field_count = 0
 integer              :: scalar_field_idx_grid_nx = 0
@@ -386,6 +388,8 @@ subroutine InitializeP0(gcomp, importState, exportState, clock, rc)
     geomtype = ESMF_GEOMTYPE_GRID
   endif
 
+  !
+  streamconfigfile = 'mom6.stream.config'
   ! Read end of run restart config option
   call NUOPC_CompAttributeGet(gcomp, name="write_restart_at_endofrun", value=value, &
                               isPresent=isPresent, isSet=isSet, rc=rc)
@@ -1573,6 +1577,11 @@ subroutine InitializeRealize(gcomp, importState, exportState, clock, rc)
   !---------------------------------
   call mom_set_geomtype(geomtype)
 
+  if (len_trim(streamconfigfile) > 0) then
+     call mom_inline_init(gcomp, clock, eMesh, stdout, streamconfigfile, rc=rc)
+     if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  end if
+
   !---------------------------------
   ! write out diagnostics
   !---------------------------------
@@ -1847,6 +1856,10 @@ subroutine ModelAdvance(gcomp, rc)
     call mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    !some logical
+    call mom_inline_run(clock, stdout, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
     !---------------
     ! Update MOM6
     !---------------
@@ -1923,7 +1936,7 @@ subroutine ModelAdvance(gcomp, rc)
         call ESMF_VMGet(vm, localPet=localPet, rc=rc)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-        write(timestamp,'(".",i4.4,"-",i2.2,"-",i2.2,"-",i5.5)'),year,month,day,hour*3600+minute*60+seconds
+        write(timestamp,'(".",i4.4,"-",i2.2,"-",i2.2,"-",i5.5)')year,month,day,hour*3600+minute*60+seconds
 
         rpointer_filename = 'rpointer.ocn'//trim(inst_suffix)
         if (pointer_date) then
