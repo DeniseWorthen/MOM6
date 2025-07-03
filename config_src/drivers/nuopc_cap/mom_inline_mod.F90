@@ -9,7 +9,7 @@ module mom_inline_mod
   use dshr_strdata_mod , only: shr_strdata_type, shr_strdata_print
   use dshr_strdata_mod , only: shr_strdata_init_from_inline
   use dshr_strdata_mod , only: shr_strdata_advance
-  use dshr_methods_mod , only: dshr_fldbun_getfldptr
+  use dshr_methods_mod , only: dshr_fldbun_getfldptr, dshr_fldbun_Field_diagnose
   use dshr_stream_mod  , only: shr_stream_init_from_esmfconfig
   use MOM_cap_methods  , only: ChkErr
 
@@ -19,28 +19,38 @@ module mom_inline_mod
   public mom_inline_init
   public mom_inline_run
 
+  integer :: logunit   ! the logunit on mytask = 0
+
+  character(len=ESMF_MAXSTR), allocatable :: streamfilelist(:)
+  character(len=ESMF_MAXSTR), allocatable :: streamfilevars(:,:)
+
   type(shr_strdata_type) :: sdat    ! input data stream
 
   character(len=*), parameter :: u_FILE_u =  __FILE__
 contains
-
-  subroutine mom_inline_init(gcomp, model_clock, model_mesh, mytask, logunit, streamconfigfile, rc)
+  !===============================================================================
+  subroutine mom_inline_init(gcomp, model_clock, model_mesh, mytask, streamconfigfile, rc)
 
     ! input/output parameters
     type(ESMF_GridComp)    , intent(in)  :: gcomp
     type(ESMF_Clock)       , intent(in)  :: model_clock
     type(ESMF_Mesh)        , intent(in)  :: model_mesh
-    integer                , intent(in)  :: logunit
     integer                , intent(in)  :: mytask
     character(len=*)       , intent(in)  :: streamconfigfile
     integer                , intent(out) :: rc
 
     integer :: ns, nf, nv
     integer :: nstreams, nfiles, nvars
-
-    character(len=ESMF_MAXSTR), allocatable :: streamfilelist(:)
-    character(len=ESMF_MAXSTR), allocatable :: streamfilevars(:,:)
     character(len=*), parameter  :: subname='(mom_inline_init)'
+    !----------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+
+    if (mytask == 0) then
+       open (newunit=logunit, file='log.mom6.cdeps')
+    else
+       logunit = 6
+    end if
 
     ! CMEPS Init PIO
     call dshr_pio_init(gcomp, sdat, logunit, rc=rc)
@@ -109,8 +119,9 @@ contains
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
   end subroutine mom_inline_init
+!===============================================================================
 
-  subroutine mom_inline_run(clock, isc, iec, jsc, jec, output, logunit, rc)
+  subroutine mom_inline_run(clock, isc, iec, jsc, jec, output, rc)
 
     ! input/output variables
     type(ESMF_Clock) ,    intent(in)    :: clock
@@ -124,19 +135,21 @@ contains
                                                                    !! the computational domain
     real (ESMF_KIND_R8) , intent(inout) :: output(isc:iec,jsc:jec) !< Output 2D array
 
-    integer ,             intent(in)    :: logunit
     integer ,             intent(out)   :: rc
 
     ! local variables
-    type(ESMF_Time)     :: date
-    integer             :: i,j,n
-    integer             :: year    ! year (0, ...) for nstep+1
-    integer             :: mon     ! month (1, ..., 12) for nstep+1
-    integer             :: day     ! day of month (1, ..., 31) for nstep+1
-    integer             :: sec     ! seconds into current date for nstep+1
-    integer             :: mcdate  ! Current model date (yyyymmdd)
-    real(ESMF_KIND_R8), pointer   :: dataPtr1d(:)
+    type(ESMF_Time)             :: date
+    integer                     :: i,j,n
+    character(len=ESMF_MAXSTR)  :: fldname
+    integer                     :: year    ! year (0, ...) for nstep+1
+    integer                     :: mon     ! month (1, ..., 12) for nstep+1
+    integer                     :: day     ! day of month (1, ..., 31) for nstep+1
+    integer                     :: sec     ! seconds into current date for nstep+1
+    integer                     :: mcdate  ! Current model date (yyyymmdd)
+    real(ESMF_KIND_R8), pointer :: dataPtr1d(:)
     !-----------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
 
     ! Advance sdat stream
     call ESMF_ClockGet( clock, currTime=date, rc=rc )
@@ -145,11 +158,17 @@ contains
     if (chkerr(rc,__LINE__,u_FILE_u)) return
     mcdate = year*10000 + mon*100 + day
 
+    ! field name in file
+    fldname = streamfilevars(1,1)
+
     call shr_strdata_advance(sdat, ymd=mcdate, tod=sec, logunit=logunit, istr='merra2_runoff', rc=rc)
     if (chkerr(rc,__LINE__,u_FILE_u)) return
 
     ! Get pointer for stream data that is time and spatially interpolated to model time and grid
     call dshr_fldbun_getFldPtr(sdat%pstrm(1)%fldbun_model, 'DUCMASS', dataPtr1d, rc=rc)
+    if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+    call dshr_fldbun_Field_diagnose(sdat%pstrm(1)%fldbun_model, trim(fldname), rc=rc)
     if (chkerr(rc,__LINE__,u_FILE_u)) return
 
     n = 0

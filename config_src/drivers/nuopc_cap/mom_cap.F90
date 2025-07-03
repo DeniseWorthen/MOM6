@@ -1578,7 +1578,7 @@ subroutine InitializeRealize(gcomp, importState, exportState, clock, rc)
   call mom_set_geomtype(geomtype)
 
   if (len_trim(streamconfigfile) > 0) then
-     call mom_inline_init(gcomp, clock, eMesh, localPet, stdout, streamconfigfile, rc=rc)
+     call mom_inline_init(gcomp, clock, eMesh, localPet, streamconfigfile, rc=rc)
      if (ChkErr(rc,__LINE__,u_FILE_u)) return
   end if
 
@@ -1859,7 +1859,7 @@ subroutine ModelAdvance(gcomp, rc)
 
     !some logical
     call get_domain_extent(ocean_public%domain, isc, iec, jsc, jec)
-    call mom_inline_run(clock, isc, iec, jsc, jec, ice_ocean_boundary%lrunoff, stdout, rc=rc)
+    call mom_inline_run(clock, isc, iec, jsc, jec, ice_ocean_boundary%lrunoff, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !---------------
