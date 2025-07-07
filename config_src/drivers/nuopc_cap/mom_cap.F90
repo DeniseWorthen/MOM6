@@ -1857,9 +1857,11 @@ subroutine ModelAdvance(gcomp, rc)
     call mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    !some logical
+    !...some logical...
     call get_domain_extent(ocean_public%domain, isc, iec, jsc, jec)
-    call mom_inline_run(clock, isc, iec, jsc, jec, ice_ocean_boundary%lrunoff, rc=rc)
+    call mom_inline_run(clock, isc, iec, jsc, jec, 'lrunoff', ice_ocean_boundary%lrunoff, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    call mom_inline_run(clock, isc, iec, jsc, jec, 'frunoff', ice_ocean_boundary%frunoff, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !---------------

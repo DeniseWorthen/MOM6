@@ -19,12 +19,10 @@ module mom_inline_mod
   public mom_inline_init
   public mom_inline_run
 
-  integer :: logunit   ! the logunit on mytask = 0
-
-  character(len=ESMF_MAXSTR), allocatable :: streamfilelist(:)
-  character(len=ESMF_MAXSTR), allocatable :: streamfilevars(:,:)
-
-  type(shr_strdata_type) :: sdat    ! input data stream
+  integer :: logunit   ! the logunit on the root task
+  ! available streams
+  type(shr_strdata_type) :: sdat_lrunoff
+  type(shr_strdata_type) :: sdat_frunoff
 
   character(len=*), parameter :: u_FILE_u =  __FILE__
 contains
@@ -39,8 +37,15 @@ contains
     character(len=*)       , intent(in)  :: streamconfigfile
     integer                , intent(out) :: rc
 
-    integer :: ns, nf, nv
-    integer :: nstreams, nfiles, nvars
+    ! stream data from config (xml or esmf), one or more streams
+    type(shr_strdata_type) :: sdat
+
+    integer :: id_lrunoff=0
+    integer :: id_frunoff=0
+
+    integer :: ns, nv
+    integer :: nstreams, nvars
+
     character(len=*), parameter  :: subname='(mom_inline_init)'
     !----------------------------------------------------------------------
 
@@ -52,76 +57,47 @@ contains
        logunit = 6
     end if
 
+#ifndef CESMCOUPLED
     ! CMEPS Init PIO
     call dshr_pio_init(gcomp, sdat, logunit, rc=rc)
     if (chkerr(rc,__LINE__,u_FILE_u)) return
 
+    ! read the available stream definitions, each data stream is one or more data_files
+    ! which have the same spatial and temporal coordinates
+    ! returns sdat%stream, of type shr_stream_streamType
     call shr_stream_init_from_esmfconfig(streamconfigfile, sdat%stream, logunit, &
          sdat%pio_subsystem, sdat%io_type, sdat%io_format, rc=rc)
     if (chkerr(rc,__LINE__,u_FILE_u)) return
+#else
+    !do cesm stuff...point to shr, use xml
+#endif
+    ! set the model clock and mesh
+    sdat%model_clock = model_clock
+    sdat%model_mesh = model_mesh
 
-    nstreams = size(sdat%stream)   ! should always be only 1 for inline?
-    nfiles = sdat%stream(1)%nfiles
-    nvars = sdat%stream(1)%nvars
-
-    allocate(streamfilelist(1:nfiles))
-    allocate(streamfilevars(1:nvars,2))
-
-    ! build the file and variable lists
+    nstreams = size(sdat%stream)
+    ! locate the individual stream data
     do ns = 1,nstreams
-       do nf = 1,nfiles
-          streamfilelist(nf) = trim(sdat%stream(1)%file(nf)%name)
-          if (mytask == 0) print *,'XX1 ',nf,trim(streamfilelist(nf))
-       end do
+       nvars = sdat%stream(ns)%nvars
        do nv = 1,nvars
-          streamfilevars(nv,1) = trim(sdat%stream(1)%varlist(nv)%nameinfile)
-          streamfilevars(nv,2) = trim(sdat%stream(1)%varlist(nv)%nameinmodel)
-          if (mytask == 0) print *,'XX1 ',nv,trim(streamfilevars(nv,1)),' ',trim(streamfilevars(nv,2))
+          if (trim(sdat%stream(ns)%varlist(nv)%nameinmodel) == 'lrunoff') id_lrunoff = ns
+          if (trim(sdat%stream(ns)%varlist(nv)%nameinmodel) == 'frunoff') id_frunoff = ns
        end do
     end do
 
-     if (mytask == 0) then
-        write(logunit,'(a)')  ' stream settings: '
-        write(logunit,'(a)' )  '  stream_mesh_filename = '//trim(sdat%stream(1)%meshfile)
-        do nf = 1,nfiles
-           write(logunit,'(a)' ) '  stream_filenames = '//trim(streamfilelist(nf))
-        end do
-        do nv = 1,nvars
-           write(logunit,'(a)' ) '  stream_fldlist file,model = '//trim(streamfilevars(nv,1))//'  '//trim(streamfilevars(nv,2))
-        end do
-        write(logunit,'(a,i8)')  '  stream_year_first    = ',sdat%stream(1)%yearFirst
-        write(logunit,'(a,i8)')  '  stream_year_last     = ',sdat%stream(1)%yearLast
-        write(logunit,'(a,i8)')  '  stream_year_align    = ',sdat%stream(1)%yearAlign
-        write(logunit,'(a)'   )  ' '
-     endif
-
-    ! initialize sdat
-    call shr_strdata_init_from_inline(sdat,                      &
-         my_task             = mytask,                           &
-         logunit             = logunit,                          &
-         compname            = 'OCN',                            &
-         model_clock         = model_clock,                      &
-         model_mesh          = model_mesh,                       &
-         stream_meshfile     = trim(sdat%stream(1)%meshfile),    &
-         stream_lev_dimname  = 'null',                           &
-         stream_mapalgo      = trim(sdat%stream(1)%mapalgo),     &
-         stream_filenames    = streamfilelist,                   &
-         stream_fldlistFile  = streamfilevars(:,1),              &
-         stream_fldListModel = streamfilevars(:,2),              &
-         stream_yearFirst    = sdat%stream(1)%yearFirst,         &
-         stream_yearLast     = sdat%stream(1)%yearLast,          &
-         stream_yearAlign    = sdat%stream(1)%yearAlign ,        &
-         stream_offset       = 0,                                &
-         stream_taxmode      = trim(sdat%stream(1)%taxmode),     &
-         stream_dtlimit      = sdat%stream(1)%dtlimit,           &
-         stream_tintalgo     = trim(sdat%stream(1)%tinterpalgo), &
-         rc                  = rc)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    if (id_lrunoff /= 0) then
+       call initialize_single_stream(sdat, sdat_lrunoff, id_lrunoff, 'lrunoff', 'OCN', mytask, logunit, rc)
+       if (chkerr(rc,__LINE__,u_FILE_u)) return
+    end if
+    if (id_frunoff /= 0) then
+       call initialize_single_stream(sdat, sdat_frunoff, id_frunoff, 'frunoff', 'OCN', mytask, logunit, rc)
+       if (chkerr(rc,__LINE__,u_FILE_u)) return
+    end if
 
   end subroutine mom_inline_init
 !===============================================================================
 
-  subroutine mom_inline_run(clock, isc, iec, jsc, jec, output, rc)
+  subroutine mom_inline_run(clock, isc, iec, jsc, jec, fldname, output, rc)
 
     ! input/output variables
     type(ESMF_Clock) ,    intent(in)    :: clock
@@ -133,6 +109,7 @@ contains
                                                                    !! the computational domain
     integer ,             intent(in)    :: jec                     !< The end j-index of cell centers within
                                                                    !! the computational domain
+    character(len=*) ,    intent(in)    :: fldname                 !! the stream name
     real (ESMF_KIND_R8) , intent(inout) :: output(isc:iec,jsc:jec) !< Output 2D array
 
     integer ,             intent(out)   :: rc
@@ -140,7 +117,6 @@ contains
     ! local variables
     type(ESMF_Time)             :: date
     integer                     :: i,j,n
-    character(len=ESMF_MAXSTR)  :: fldname
     integer                     :: year    ! year (0, ...) for nstep+1
     integer                     :: mon     ! month (1, ..., 12) for nstep+1
     integer                     :: day     ! day of month (1, ..., 31) for nstep+1
@@ -158,18 +134,28 @@ contains
     if (chkerr(rc,__LINE__,u_FILE_u)) return
     mcdate = year*10000 + mon*100 + day
 
-    ! field name in file
-    fldname = streamfilevars(1,1)
+    if (trim(fldname) == 'lrunoff') then
+       call shr_strdata_advance(sdat_lrunoff, ymd=mcdate, tod=sec, logunit=logunit, istr='lrunoff stream',rc=rc)
+       if (chkerr(rc,__LINE__,u_FILE_u)) return
 
-    call shr_strdata_advance(sdat, ymd=mcdate, tod=sec, logunit=logunit, istr='merra2_runoff', rc=rc)
-    if (chkerr(rc,__LINE__,u_FILE_u)) return
+       ! Get pointer for stream data that is time and spatially interpolated to model time and grid
+       call dshr_fldbun_getFldPtr(sdat_lrunoff%pstrm(1)%fldbun_model, trim(fldname), dataPtr1d, rc=rc)
+       if (chkerr(rc,__LINE__,u_FILE_u)) return
 
-    ! Get pointer for stream data that is time and spatially interpolated to model time and grid
-    call dshr_fldbun_getFldPtr(sdat%pstrm(1)%fldbun_model, 'DUCMASS', dataPtr1d, rc=rc)
-    if (chkerr(rc,__LINE__,u_FILE_u)) return
+       call dshr_fldbun_Field_diagnose(sdat_lrunoff%pstrm(1)%fldbun_model, trim(fldname), rc=rc)
+       if (chkerr(rc,__LINE__,u_FILE_u)) return
+    end if
+    if (trim(fldname) == 'frunoff') then
+       call shr_strdata_advance(sdat_frunoff, ymd=mcdate, tod=sec, logunit=logunit, istr='frunoff stream', rc=rc)
+       if (chkerr(rc,__LINE__,u_FILE_u)) return
 
-    call dshr_fldbun_Field_diagnose(sdat%pstrm(1)%fldbun_model, trim(fldname), rc=rc)
-    if (chkerr(rc,__LINE__,u_FILE_u)) return
+       ! Get pointer for stream data that is time and spatially interpolated to model time and grid
+       call dshr_fldbun_getFldPtr(sdat_frunoff%pstrm(1)%fldbun_model, trim(fldname), dataPtr1d, rc=rc)
+       if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+       call dshr_fldbun_Field_diagnose(sdat_frunoff%pstrm(1)%fldbun_model, trim(fldname), rc=rc)
+       if (chkerr(rc,__LINE__,u_FILE_u)) return
+    end if
 
     n = 0
     do j = jsc,jec
@@ -180,5 +166,88 @@ contains
     end do
 
   end subroutine mom_inline_run
+  !===============================================================================
+
+  subroutine initialize_single_stream(sdatm, sdats, sid, sdatname, compname, mytask, logunit, rc)
+
+    type(shr_strdata_type), intent(inout) :: sdatm
+    type(shr_strdata_type), intent(inout) :: sdats
+    integer,                intent(in)    :: sid
+    character(len=*),       intent(in)    :: sdatname
+    character(len=*),       intent(in)    :: compname
+    integer,                intent(in)    :: mytask
+    integer,                intent(in)    :: logunit
+    integer ,               intent(out)   :: rc
+
+    ! local
+    integer :: nfiles, nvars, nf, nv
+    character(len=ESMF_MAXSTR), allocatable :: filelist(:)
+    character(len=ESMF_MAXSTR), allocatable :: filevars(:,:)
+
+    !-----------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+
+    nfiles = sdatm%stream(sid)%nfiles
+    nvars = sdatm%stream(sid)%nvars
+
+    allocate(filelist(1:nfiles))
+    allocate(filevars(1:nvars,2))
+
+    do nf = 1,nfiles
+       filelist(nf) = trim(sdatm%stream(sid)%file(nf)%name)
+    end do
+    do nv = 1,nvars
+       filevars(nv,1) = trim(sdatm%stream(sid)%varlist(nv)%nameinfile)
+       filevars(nv,2) = trim(sdatm%stream(sid)%varlist(nv)%nameinmodel)
+    end do
+
+    ! Write out info
+    if (mytask == 0) then
+       write(logunit,'(a)'   ) ' '
+       write(logunit,'(a,i8)')  'stream settings:',sid
+       do nf = 1,nfiles
+          write(logunit,'(a)' )  '  stream file list = '//trim(filelist(nf))
+       end do
+       do nv = 1,nvars
+          write(logunit,'(a)' )  '  stream variable in file= '//trim(filevars(nv,1))//' ; variable in model '//trim(filevars(nv,2))
+          write(logunit,'(a)' )  ' '
+       end do
+    endif
+
+    ! Set PIO related variables
+    sdats%pio_subsystem => sdatm%pio_subsystem
+    sdats%io_type = sdatm%io_type
+    sdats%io_format = sdatm%io_format
+
+    call shr_strdata_init_from_inline(sdats,                        &
+         my_task             = mytask,                              &
+         logunit             = logunit,                             &
+         compname            = trim(compname),                      &
+         model_clock         = sdatm%model_clock,                   &
+         model_mesh          = sdatm%model_mesh,                    &
+         stream_name         = trim(sdatname),                      &
+         stream_meshfile     = trim(sdatm%stream(sid)%meshFile),    &
+         stream_filenames    = filelist,                            &
+         stream_yearFirst    = sdatm%stream(sid)%yearFirst,         &
+         stream_yearLast     = sdatm%stream(sid)%yearLast,          &
+         stream_yearAlign    = sdatm%stream(sid)%yearAlign,         &
+         stream_fldlistFile  = filevars(:,1),                       &
+         stream_fldListModel = filevars(:,2),                       &
+         stream_lev_dimname  = trim(sdatm%stream(sid)%lev_dimname), &
+         stream_mapalgo      = trim(sdatm%stream(sid)%mapAlgo),     &
+         stream_offset       = sdatm%stream(sid)%offset,            &
+         stream_taxmode      = trim(sdatm%stream(sid)%taxmode),     &
+         stream_dtlimit      = sdatm%stream(sid)%dtlimit,           &
+         stream_tintalgo     = trim(sdatm%stream(sid)%tInterpAlgo), &
+         stream_src_mask     = sdatm%stream(sid)%src_mask_val,      &
+         stream_dst_mask     = sdatm%stream(sid)%dst_mask_val,      &
+         rc                  = rc)
+    if (chkerr(rc,__LINE__,u_FILE_u)) return
+
+    deallocate(filelist)
+    deallocate(filevars)
+
+  end subroutine initialize_single_stream
 
 end module mom_inline_mod
