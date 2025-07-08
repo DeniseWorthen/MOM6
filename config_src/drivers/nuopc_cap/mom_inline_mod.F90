@@ -97,6 +97,7 @@ contains
   end subroutine mom_inline_init
 !===============================================================================
 
+  !call mom_inline_run(clock, isc, iec, jsc, jec, 'lrunoff', ice_ocean_boundary%lrunoff, rc=rc)
   subroutine mom_inline_run(clock, isc, iec, jsc, jec, fldname, output, rc)
 
     ! input/output variables
@@ -161,7 +162,7 @@ contains
     do j = jsc,jec
        do i = isc,iec
           n = n + 1
-          output(i,j)  = output(i,j) + dataPtr1d(n)
+          output(i,j)  = dataPtr1d(n)
        end do
     end do
 
@@ -210,7 +211,7 @@ contains
           write(logunit,'(a)' )  '  stream file list = '//trim(filelist(nf))
        end do
        do nv = 1,nvars
-          write(logunit,'(a)' )  '  stream variable in file= '//trim(filevars(nv,1))//' ; variable in model '//trim(filevars(nv,2))
+          write(logunit,'(a)' )  '  stream variable in file= '//trim(filevars(nv,1))//' ; variable in model= '//trim(filevars(nv,2))
           write(logunit,'(a)' )  ' '
        end do
     endif
