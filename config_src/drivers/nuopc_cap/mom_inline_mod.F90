@@ -135,6 +135,7 @@ contains
     if (chkerr(rc,__LINE__,u_FILE_u)) return
     mcdate = year*10000 + mon*100 + day
 
+    ! TODO: need to allow for multiple variables/stream
     if (trim(fldname) == 'lrunoff') then
        call shr_strdata_advance(sdat_lrunoff, ymd=mcdate, tod=sec, logunit=logunit, istr='lrunoff stream',rc=rc)
        if (chkerr(rc,__LINE__,u_FILE_u)) return
