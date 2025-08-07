@@ -142,7 +142,7 @@ logical              :: grid_attach_area = .false.
 logical              :: use_coldstart = .true.
 logical              :: use_mommesh = .true.
 logical              :: restart_eor = .false.
-character(len=128)   :: streamconfigfile = ''
+character(len=128)   :: streamconfig = ''
 character(len=128)   :: scalar_field_name = ''
 integer              :: scalar_field_count = 0
 integer              :: scalar_field_idx_grid_nx = 0
@@ -388,8 +388,12 @@ subroutine InitializeP0(gcomp, importState, exportState, clock, rc)
     geomtype = ESMF_GEOMTYPE_GRID
   endif
 
-  !
-  streamconfigfile = 'mom6.stream.config'
+  call NUOPC_CompAttributeGet(gcomp, name="streamconfig", value=value, isPresent=isPresent, isSet=isSet, rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  if (isPresent .and. isSet) then
+     streamconfig = trim(value)
+  endif
+
   ! Read end of run restart config option
   call NUOPC_CompAttributeGet(gcomp, name="write_restart_at_endofrun", value=value, &
                               isPresent=isPresent, isSet=isSet, rc=rc)
@@ -1577,8 +1581,8 @@ subroutine InitializeRealize(gcomp, importState, exportState, clock, rc)
   !---------------------------------
   call mom_set_geomtype(geomtype)
 
-  if (len_trim(streamconfigfile) > 0) then
-     call mom_inline_init(gcomp, clock, eMesh, localPet, streamconfigfile, rc=rc)
+  if (len_trim(streamconfig) > 0) then
+     call mom_inline_init(gcomp, clock, eMesh, localPet, streamconfig, rc=rc)
      if (ChkErr(rc,__LINE__,u_FILE_u)) return
   end if
 
@@ -1742,7 +1746,6 @@ subroutine ModelAdvance(gcomp, rc)
   real(8)                                :: MPI_Wtime, timers
   logical                                :: write_restart, write_restartfh
   logical                                :: write_restart_eor
-  integer :: isc, iec, jsc, jec
 
   rc = ESMF_SUCCESS
   if(profile_memory) call ESMF_VMLogMemInfo("Entering MOM Model_ADVANCE: ")
@@ -1858,11 +1861,8 @@ subroutine ModelAdvance(gcomp, rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !...some logical...
-    call get_domain_extent(ocean_public%domain, isc, iec, jsc, jec)
-    call mom_inline_run(clock, isc, iec, jsc, jec, 'lrunoff', ice_ocean_boundary%lrunoff, rc=rc)
+    call mom_inline_run(clock, ocean_public, ocean_grid, ice_ocean_boundary, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    !call mom_inline_run(clock, isc, iec, jsc, jec, 'frunoff', ice_ocean_boundary%frunoff, rc=rc)
-    !if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     !---------------
     ! Update MOM6
