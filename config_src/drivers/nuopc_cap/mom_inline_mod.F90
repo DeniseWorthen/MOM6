@@ -1,10 +1,11 @@
 module mom_inline_mod
 
+  use NUOPC            , only: NUOPC_CompAttributeGet
   use ESMF             , only: ESMF_GridComp, ESMF_Mesh
   use ESMF             , only: ESMF_Clock, ESMF_Time, ESMF_TimeGet, ESMF_ClockGet
   use ESMF             , only: ESMF_KIND_R8, ESMF_SUCCESS, ESMF_LogFoundError
   use ESMF             , only: ESMF_LOGERR_PASSTHRU, ESMF_LOGMSG_INFO, ESMF_LOGWRITE
-  use ESMF             , only: ESMF_MAXSTR
+  use ESMF             , only: ESMF_END_ABORT, ESMF_Finalize, ESMF_MAXSTR
   use dshr_mod         , only: dshr_pio_init
   use dshr_strdata_mod , only: shr_strdata_type, shr_strdata_print
   use dshr_strdata_mod , only: shr_strdata_init_from_inline
@@ -27,22 +28,24 @@ module mom_inline_mod
   character(len=*), parameter :: u_FILE_u =  __FILE__
 contains
   !===============================================================================
-  subroutine mom_inline_init(gcomp, model_clock, model_mesh, mytask, configfile, rc)
+  subroutine mom_inline_init(gcomp, model_clock, model_mesh, mytask, rc)
 
     ! input/output parameters
-    type(ESMF_GridComp)    , intent(in)  :: gcomp
-    type(ESMF_Clock)       , intent(in)  :: model_clock
-    type(ESMF_Mesh)        , intent(in)  :: model_mesh
-    integer                , intent(in)  :: mytask
-    character(len=*)       , intent(in)  :: configfile
-    integer                , intent(out) :: rc
+    type(ESMF_GridComp)    , intent(in)  :: gcomp        !< ESMF_GridComp object
+    type(ESMF_Clock)       , intent(in)  :: model_clock  !< ESMF_Clock object
+    type(ESMF_Mesh)        , intent(in)  :: model_mesh   !< ESMF mesh
+    integer                , intent(in)  :: mytask       !< the current task
+    integer                , intent(out) :: rc           !< Return code
 
     ! stream data from config (xml or esmf), one or more streams
     type(shr_strdata_type) :: sdatconfig
 
+    ! local variables
+    logical :: isPresent, isSet
     integer :: ns, l
     integer :: nstreams, nvars
 
+    character(len=ESMF_MAXSTR) :: value, streamfilename
     character(len=ESMF_MAXSTR), allocatable :: filelist(:)
     character(len=ESMF_MAXSTR), allocatable :: filevars(:,:)
 
@@ -51,24 +54,35 @@ contains
 
     rc = ESMF_SUCCESS
 
+    call NUOPC_CompAttributeGet(gcomp, name="streamfilename", value=value, isPresent=isPresent, isSet=isSet, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    if (isPresent .and. isSet) then
+      streamfilename = value
+    else
+      call ESMF_LogWrite(trim(subname)//': streamfilename must be provided', ESMF_LOGMSG_INFO)
+      call ESMF_Finalize(endflag=ESMF_END_ABORT)
+      return
+    end if
+
+#ifndef CESMCOUPLED
     if (mytask == 0) then
       open (newunit=logunit, file='log.mom6.cdeps')
     else
       logunit = 6
     end if
 
-#ifndef CESMCOUPLED
     ! CMEPS Init PIO
     call dshr_pio_init(gcomp, sdatconfig, logunit, rc=rc)
     if (chkerr(rc,__LINE__,u_FILE_u)) return
 
     ! read the available stream definitions, each data stream is one or more data_files
     ! which have the same spatial and temporal coordinates
-    call shr_stream_init_from_esmfconfig(configfile, sdatconfig%stream, logunit, &
+    call shr_stream_init_from_esmfconfig(trim(streamfilename), sdatconfig%stream, logunit, &
          sdatconfig%pio_subsystem, sdatconfig%io_type, sdatconfig%io_format, rc=rc)
     if (chkerr(rc,__LINE__,u_FILE_u)) return
 #else
-    !TODO: cesm configuration via xml etc
+    !TODO: CESM logunit, configuration via xml etc
+    !call shr_stream_init_from_xml(trim(streamfilename) ....
 #endif
 
     nstreams = size(sdatconfig%stream)
@@ -129,7 +143,7 @@ contains
 
   end subroutine mom_inline_init
   !===============================================================================
-  subroutine mom_inline_run(clock, ocean_public, ocean_grid, ice_ocean_boundary, rc)
+  subroutine mom_inline_run(clock, ocean_public, ocean_grid, ice_ocean_boundary, dbug, rc)
 
     use MOM_ocean_model_nuopc,     only: ocean_public_type
     use MOM_surface_forcing_nuopc, only: ice_ocean_boundary_type
@@ -137,11 +151,12 @@ contains
     use mpp_domains_mod,           only: mpp_get_compute_domain
 
     ! input/output variables
-    type(ESMF_Clock) ,              intent(in)    :: clock              !< Model clock
+    type(ESMF_Clock) ,              intent(in)    :: clock              !< ESMF_Clock object
     type(ocean_public_type)       , intent(in)    :: ocean_public       !< Ocean surface state
     type(ocean_grid_type)         , intent(in)    :: ocean_grid         !< Ocean model grid
     type(ice_ocean_boundary_type) , intent(inout) :: ice_ocean_boundary !< Ocean boundary forcing
-    integer ,                       intent(out)   :: rc
+    integer ,                       intent(in)    :: dbug               !< Integer debug flag
+    integer ,                       intent(out)   :: rc                 !< Return code
 
     ! local variables
     type(ESMF_Time)             :: date
@@ -195,8 +210,12 @@ contains
           end do
         end if
 
-      end do
-    end do
+        if (dbug > 1) then
+          call dshr_fldbun_Field_diagnose(sdat(ns)%pstrm(1)%fldbun_model, trim(fldname), 'inline_run ', rc=rc)
+          if (chkerr(rc,__LINE__,u_FILE_u)) return
+        end if
+      end do !nf
+    end do !ns
 
   end subroutine mom_inline_run
 end module mom_inline_mod
