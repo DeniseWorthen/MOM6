@@ -2251,7 +2251,7 @@ subroutine ocean_model_finalize(gcomp, rc)
   character(len=*),parameter  :: subname='(MOM_cap:ocean_model_finalize)'
   real(8)                                :: MPI_Wtime, timefs
 
-  if (mype == 0) call ufs_trace("mom", "ocean_model_finalize", "B")
+  if (mype == 0) call ufs_trace("mom", "ModelFinalize", "B")
   if (is_root_pe()) then
     write(stdout,*) 'MOM: --- finalize called ---'
   endif
@@ -2287,7 +2287,7 @@ subroutine ocean_model_finalize(gcomp, rc)
 
   if(write_runtimelog .and. is_root_pe()) write(stdout,*) 'In ',trim(subname),' time ', MPI_Wtime()-timefs
 
-  if (mype == 0) call ufs_trace("mom", "ocean_model_finalize", "E")
+  if (mype == 0) call ufs_trace("mom", "ModelFinalize", "E")
 end subroutine ocean_model_finalize
 
 
