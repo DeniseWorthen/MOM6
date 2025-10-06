@@ -94,7 +94,7 @@ use NUOPC_Model, only: SetVM
 #ifndef CESMCOUPLED
   use shr_is_restart_fh_mod, only : init_is_restart_fh, is_restart_fh, is_restart_fh_type
 #endif
-use ufs_trace_mod, only: ufs_trace_init, ufs_trace
+use mom_ufs_trace_wrapper_mod, only: ufs_trace_init_wrapper, ufs_trace_wrapper
 
 implicit none; private
 
@@ -189,8 +189,8 @@ subroutine SetServices(gcomp, rc)
   call ESMF_VMGet(vm, localpet=mype, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-  if (mype == 0) call ufs_trace_init()
-  if (mype == 0) call ufs_trace("mom", "SetServices", "B")
+  if (mype == 0) call ufs_trace_init_wrapper()
+  if (mype == 0) call ufs_trace_wrapper("mom", "SetServices", "B")
 
   ! the NUOPC model component will register the generic methods
   call NUOPC_CompDerive(gcomp, model_routine_SS, rc=rc)
@@ -231,7 +231,7 @@ subroutine SetServices(gcomp, rc)
        specRoutine=ocean_model_finalize, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-  if (mype == 0) call ufs_trace("mom", "SetServices", "E")
+  if (mype == 0) call ufs_trace_wrapper("mom", "SetServices", "E")
 
 end subroutine SetServices
 
@@ -262,7 +262,7 @@ subroutine InitializeP0(gcomp, importState, exportState, clock, rc)
 
   rc = ESMF_SUCCESS
 
-  if (mype == 0) call ufs_trace("mom", "InitializeP0", "B")
+  if (mype == 0) call ufs_trace_wrapper("mom", "InitializeP0", "B")
 
   ! Switch to IPDv03 by filtering all other phaseMap entries
   call NUOPC_CompFilterPhaseMap(gcomp, ESMF_METHOD_INITIALIZE, &
@@ -418,7 +418,7 @@ subroutine InitializeP0(gcomp, importState, exportState, clock, rc)
      if (trim(value) .eq. '.true.') restart_eor = .true.
   end if
 
-  if (mype == 0) call ufs_trace("mom", "InitializeP0", "E")
+  if (mype == 0) call ufs_trace_wrapper("mom", "InitializeP0", "E")
 
 end subroutine
 
@@ -490,7 +490,7 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
 
   rc = ESMF_SUCCESS
 
-  if (mype == 0) call ufs_trace("mom", "InitializeAdvertise", "B")
+  if (mype == 0) call ufs_trace_wrapper("mom", "InitializeAdvertise", "B")
 
   if(write_runtimelog) timeiads = MPI_Wtime()
 
@@ -935,7 +935,7 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
   enddo
   if(write_runtimelog .and. is_root_pe()) write(stdout,*) 'In ',trim(subname),' time ', MPI_Wtime()-timeiads
 
-  if (mype == 0) call ufs_trace("mom", "InitializeAdvertise", "E")
+  if (mype == 0) call ufs_trace_wrapper("mom", "InitializeAdvertise", "E")
 
 end subroutine InitializeAdvertise
 
@@ -1031,7 +1031,7 @@ subroutine InitializeRealize(gcomp, importState, exportState, clock, rc)
 
   rc = ESMF_SUCCESS
 
-  if (mype == 0) call ufs_trace("mom", "InitializeRealize", "B")
+  if (mype == 0) call ufs_trace_wrapper("mom", "InitializeRealize", "B")
 
   if(write_runtimelog) timeirls = MPI_Wtime()
 
@@ -1618,7 +1618,7 @@ subroutine InitializeRealize(gcomp, importState, exportState, clock, rc)
   timere = 0.
   if(write_runtimelog .and. is_root_pe()) write(stdout,*) 'In ',trim(subname),' time ', MPI_Wtime()-timeirls
 
-  if (mype == 0) call ufs_trace("mom", "InitializeRealize", "E")
+  if (mype == 0) call ufs_trace_wrapper("mom", "InitializeRealize", "E")
 
 end subroutine InitializeRealize
 
@@ -1651,7 +1651,7 @@ subroutine DataInitialize(gcomp, rc)
   real(8)                                :: MPI_Wtime, timedis
   !--------------------------------
 
-  if (mype == 0) call ufs_trace("mom", "DataInitialize", "B")
+  if (mype == 0) call ufs_trace_wrapper("mom", "DataInitialize", "B")
 
   if(write_runtimelog) timedis = MPI_Wtime()
 
@@ -1717,7 +1717,7 @@ subroutine DataInitialize(gcomp, rc)
 
   if(write_runtimelog .and. is_root_pe()) write(stdout,*) 'In ',trim(subname),' time ', MPI_Wtime()-timedis
 
-  if (mype == 0) call ufs_trace("mom", "DataInitialize", "E")
+  if (mype == 0) call ufs_trace_wrapper("mom", "DataInitialize", "E")
 
 end subroutine DataInitialize
 
@@ -1776,7 +1776,7 @@ subroutine ModelAdvance(gcomp, rc)
 
   rc = ESMF_SUCCESS
 
-  if (mype == 0) call ufs_trace("mom", "ModelAdvance", "B")
+  if (mype == 0) call ufs_trace_wrapper("mom", "ModelAdvance", "B")
 
   if(profile_memory) call ESMF_VMLogMemInfo("Entering MOM Model_ADVANCE: ")
   if(write_runtimelog) then
@@ -2053,7 +2053,7 @@ subroutine ModelAdvance(gcomp, rc)
 
   if(profile_memory) call ESMF_VMLogMemInfo("Leaving MOM Model_ADVANCE: ")
 
-  if (mype == 0) call ufs_trace("mom", "ModelAdvance", "E")
+  if (mype == 0) call ufs_trace_wrapper("mom", "ModelAdvance", "E")
 
 end subroutine ModelAdvance
 
@@ -2083,7 +2083,7 @@ subroutine ModelSetRunClock(gcomp, rc)
 
   rc = ESMF_SUCCESS
 
-  if (mype == 0) call ufs_trace("mom", "ModelSetRunClock", "B")
+  if (mype == 0) call ufs_trace_wrapper("mom", "ModelSetRunClock", "B")
 
   ! query the Component for its clock, importState and exportState
   call NUOPC_ModelGet(gcomp, driverClock=dclock, modelClock=mclock, rc=rc)
@@ -2238,7 +2238,7 @@ subroutine ModelSetRunClock(gcomp, rc)
   call ESMF_ClockSet(mclock, currTime=dcurrtime, timeStep=dtimestep, stopTime=mstoptime, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-  if (mype == 0) call ufs_trace("mom", "ModelSetRunClock", "E")
+  if (mype == 0) call ufs_trace_wrapper("mom", "ModelSetRunClock", "E")
 
 end subroutine ModelSetRunClock
 
@@ -2266,7 +2266,7 @@ subroutine ocean_model_finalize(gcomp, rc)
   character(len=*),parameter  :: subname='(MOM_cap:ocean_model_finalize)'
   real(8)                                :: MPI_Wtime, timefs
 
-  if (mype == 0) call ufs_trace("mom", "ocean_model_finalize", "B")
+  if (mype == 0) call ufs_trace_wrapper("mom", "ocean_model_finalize", "B")
 
   if (is_root_pe()) then
     write(stdout,*) 'MOM: --- finalize called ---'
@@ -2303,7 +2303,7 @@ subroutine ocean_model_finalize(gcomp, rc)
 
   if(write_runtimelog .and. is_root_pe()) write(stdout,*) 'In ',trim(subname),' time ', MPI_Wtime()-timefs
 
-  if(mype == 0) call ufs_trace("mom", "ocean_model_finalize", "E")
+  if(mype == 0) call ufs_trace_wrapper("mom", "ocean_model_finalize", "E")
 
 end subroutine ocean_model_finalize
 
