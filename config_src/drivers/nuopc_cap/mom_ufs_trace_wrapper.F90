@@ -33,6 +33,7 @@ contains
 #ifdef UFS_TRACING
     call ufs_trace_finalize
 #endif
+    return
   end subroutine ufs_trace_finalize_wrapper
 
 end module mom_ufs_trace_wrapper_mod
