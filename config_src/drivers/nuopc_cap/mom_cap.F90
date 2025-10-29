@@ -37,6 +37,8 @@ use nuopc_shr_methods,       only: get_component_instance
 #endif
 use time_utils_mod,           only: esmf2fms_time
 
+use mom_cap_logging, only: outputAlarms_init, outputAlarms_run
+
 use, intrinsic :: iso_fortran_env, only: output_unit
 
 use ESMF,  only: ESMF_ClockAdvance, ESMF_ClockGet, ESMF_ClockPrint, ESMF_VMget
@@ -163,10 +165,10 @@ character(len=16) :: inst_suffix = ''
 logical           :: pointer_date = .true. ! append date to rpointer
 real(8) :: timere
 
-type(ESMF_Alarm)        :: history_alarm
-type(ESMF_TimeInterval) :: outputInterval
-character(len=256) :: history_fname
-logical :: chkfile_nextAdvance = .false.
+!type(ESMF_Alarm)        :: history_alarm
+!type(ESMF_TimeInterval) :: outputInterval
+!character(len=256) :: history_fname
+!logical :: chkfile_nextAdvance = .false.
 
 contains
 
@@ -1752,7 +1754,8 @@ subroutine ModelAdvance(gcomp, rc)
   logical                                :: write_restart, write_restartfh
   logical                                :: write_restart_eor
   ! debug
-  integer :: nlen, ncid, dimid
+  !integer :: nlen, ncid, dimid
+  !character(len=256) :: fname
 
   rc = ESMF_SUCCESS
   if(profile_memory) call ESMF_VMLogMemInfo("Entering MOM Model_ADVANCE: ")
@@ -1785,7 +1788,9 @@ subroutine ModelAdvance(gcomp, rc)
   call ESMF_LogWrite(trim(msgString), ESMF_LOGMSG_INFO)
 
   call ESMF_TimeGet(currTime,          timestring=import_timestr, rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
   call ESMF_TimeGet(currTime+timestep, timestring=export_timestr, rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
   Time_step_coupled = esmf2fms_time(timeStep)
   Time = esmf2fms_time(currTime)
@@ -1995,7 +2000,7 @@ subroutine ModelAdvance(gcomp, rc)
                                 stoch_restartname=stoch_restartname)
 #ifndef CESMCOUPLED
         if (is_root_pe()) then
-          call log_restart_fh(MyTime, startTime, 'mom6', rc=rc)
+          call log_restart_fh(MyTime, startTime, 'mom6.res', prefixtime=.true., rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
         endif
 #endif
@@ -2007,6 +2012,9 @@ subroutine ModelAdvance(gcomp, rc)
     endif
   endif ! restart_mode
 
+  call outputAlarms_run(clock, rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+#ifdef test
   call ESMF_ClockGetAlarm(clock, alarmname='history_alarm', alarm=history_alarm, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
   if (ESMF_AlarmIsRinging(history_alarm, rc=rc)) then
@@ -2019,9 +2027,10 @@ subroutine ModelAdvance(gcomp, rc)
     call ESMF_ClockGetNextTime(clock, MyTime, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     call ESMF_TimeGet (MyTime-9*outputInterval, yy=year, mm=month, dd=day, h=hour, rc=rc )
+    !call ESMF_TimeGet (MyTime-36*outputInterval, yy=year, mm=month, dd=day, h=hour, rc=rc )
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     write(history_fname,'(a,i4.4,3(a,i2.2),a)')'ocn_',year,'_',month,'_',day,'_',hour,'.nc'
-    if(is_root_pe()) print *,'XXX0 '//trim(history_fname),'  ',trim(export_timestr)
+    if(is_root_pe())print *,'XX0 '//trim(history_fname)//'  '//trim(import_timestr)//'  '//trim(export_timestr)
   end if
 
   if (chkfile_nextAdvance) then
@@ -2040,9 +2049,8 @@ subroutine ModelAdvance(gcomp, rc)
         if(is_root_pe())print *,'XX '//trim(history_fname)//'  '//trim(import_timestr)//'  '//trim(export_timestr)//' still 0'
       end if
     end if
-    !check filename currtime-9
-    !if file exists, done, chkfile_nextAdvance=.false.
   end if
+#endif
 
   !---------------
   ! Write diagnostics
@@ -2242,6 +2250,9 @@ subroutine ModelSetRunClock(gcomp, rc)
     call ESMF_TimeGet(dstoptime, timestring=timestr, rc=rc)
     call ESMF_LogWrite("Stop Alarm will ring at : "//trim(timestr), ESMF_LOGMSG_INFO)
 
+    call outputAlarms_init(mclock, rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+#ifdef test
     call ESMF_TimeIntervalSet(outputInterval, h=1, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     call AlarmInit(mclock,        &
@@ -2256,7 +2267,7 @@ subroutine ModelSetRunClock(gcomp, rc)
     call ESMF_AlarmSet(history_alarm, clock=mclock, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     call ESMF_LogWrite(subname//" History alarm is Created and Set", ESMF_LOGMSG_INFO)
-
+#endif
     first_time = .false.
 
   endif
