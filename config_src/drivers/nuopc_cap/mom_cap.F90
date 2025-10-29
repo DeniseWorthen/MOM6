@@ -73,7 +73,7 @@ use ESMF,  only: ESMF_AlarmGet, ESMF_AlarmIsCreated, ESMF_ALARMLIST_ALL, ESMF_Al
 use ESMF,  only: ESMF_STATEITEM_NOTFOUND, ESMF_FieldWrite
 use ESMF,  only: ESMF_END_ABORT, ESMF_Finalize
 use ESMF,  only: ESMF_REDUCE_MAX, ESMF_REDUCE_MIN, ESMF_VMAllReduce
-use ESMF,  only: operator(==), operator(/=), operator(+), operator(-)
+use ESMF,  only: operator(==), operator(/=), operator(+), operator(-), operator(*)
 
 ! TODO ESMF_GridCompGetInternalState does not have an explicit Fortran interface.
 !! Model does not compile with "use ESMF,  only: ESMF_GridCompGetInternalState"
@@ -92,7 +92,8 @@ use NUOPC_Model, only: model_label_Finalize       => label_Finalize
 use NUOPC_Model, only: SetVM
 
 #ifndef CESMCOUPLED
-  use shr_is_restart_fh_mod, only : init_is_restart_fh, is_restart_fh, is_restart_fh_type
+use shr_is_restart_fh_mod, only : init_is_restart_fh, is_restart_fh, is_restart_fh_type
+use shr_is_restart_fh_mod, only : log_restart_fh
 #endif
 
 implicit none; private
@@ -161,6 +162,11 @@ character(len=8)  :: restart_mode = 'alarms'
 character(len=16) :: inst_suffix = ''
 logical           :: pointer_date = .true. ! append date to rpointer
 real(8) :: timere
+
+type(ESMF_Alarm)        :: history_alarm
+type(ESMF_TimeInterval) :: outputInterval
+character(len=256) :: history_fname
+logical :: chkfile_nextAdvance = .false.
 
 contains
 
@@ -1695,6 +1701,9 @@ end subroutine DataInitialize
 !! @param gcomp an ESMF_GridComp object
 !! @param rc return code
 subroutine ModelAdvance(gcomp, rc)
+  !debug
+  use netcdf
+
   type(ESMF_GridComp)                    :: gcomp !< ESMF_GridComp object
   integer, intent(out)                   :: rc    !< return code
 
@@ -1742,6 +1751,8 @@ subroutine ModelAdvance(gcomp, rc)
   real(8)                                :: MPI_Wtime, timers
   logical                                :: write_restart, write_restartfh
   logical                                :: write_restart_eor
+  ! debug
+  integer :: nlen, ncid, dimid
 
   rc = ESMF_SUCCESS
   if(profile_memory) call ESMF_VMLogMemInfo("Entering MOM Model_ADVANCE: ")
@@ -1982,7 +1993,12 @@ subroutine ModelAdvance(gcomp, rc)
         ! write restart file(s)
         call ocean_model_restart(ocean_state, restartname=restartname, &
                                 stoch_restartname=stoch_restartname)
-
+#ifndef CESMCOUPLED
+        if (is_root_pe()) then
+          call log_restart_fh(MyTime, startTime, 'mom6', rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+        endif
+#endif
       endif
 
       if (is_root_pe()) then
@@ -1990,6 +2006,43 @@ subroutine ModelAdvance(gcomp, rc)
       endif
     endif
   endif ! restart_mode
+
+  call ESMF_ClockGetAlarm(clock, alarmname='history_alarm', alarm=history_alarm, rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  if (ESMF_AlarmIsRinging(history_alarm, rc=rc)) then
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    chkfile_nextAdvance = .true.
+    ! turn off the alarm
+    call ESMF_AlarmRingerOff(history_alarm, rc=rc )
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    ! set filename
+    call ESMF_ClockGetNextTime(clock, MyTime, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    call ESMF_TimeGet (MyTime-9*outputInterval, yy=year, mm=month, dd=day, h=hour, rc=rc )
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    write(history_fname,'(a,i4.4,3(a,i2.2),a)')'ocn_',year,'_',month,'_',day,'_',hour,'.nc'
+    if(is_root_pe()) print *,'XXX0 '//trim(history_fname),'  ',trim(export_timestr)
+  end if
+
+  if (chkfile_nextAdvance) then
+    ! check if file is written
+    inquire(file=trim(history_fname), exist=existflag)
+    if (existflag) then
+      !open and inquire unlimdim
+      rc = nf90_open(trim(history_fname), nf90_nowrite, ncid)
+      rc = nf90_inquire(ncid, unlimiteddimid=dimid)
+      rc = nf90_inquire_dimension(ncid, dimid, len=nlen)
+      rc = nf90_close(ncid)
+      if (nlen > 0) then
+        chkfile_nextAdvance = .false.
+        if(is_root_pe())print *,'XX '//trim(history_fname)//'  '//trim(import_timestr)//'  '//trim(export_timestr)//' complete'
+      else
+        if(is_root_pe())print *,'XX '//trim(history_fname)//'  '//trim(import_timestr)//'  '//trim(export_timestr)//' still 0'
+      end if
+    end if
+    !check filename currtime-9
+    !if file exists, done, chkfile_nextAdvance=.false.
+  end if
 
   !---------------
   ! Write diagnostics
@@ -2023,6 +2076,9 @@ end subroutine ModelAdvance
 
 
 subroutine ModelSetRunClock(gcomp, rc)
+  ! debug
+  use ESMF, only : ESMF_TimeIntervalSet
+
   type(ESMF_GridComp)  :: gcomp
   integer, intent(out) :: rc
 
@@ -2185,6 +2241,21 @@ subroutine ModelSetRunClock(gcomp, rc)
 
     call ESMF_TimeGet(dstoptime, timestring=timestr, rc=rc)
     call ESMF_LogWrite("Stop Alarm will ring at : "//trim(timestr), ESMF_LOGMSG_INFO)
+
+    call ESMF_TimeIntervalSet(outputInterval, h=1, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    call AlarmInit(mclock,        &
+         alarm   = history_alarm, &
+         option  = 'nhours',      &
+         opt_n   = 6,             &
+         opt_ymd = -999,          &
+         RefTime = mcurrTime,     &
+         alarmname = 'history_alarm', rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    call ESMF_AlarmSet(history_alarm, clock=mclock, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    call ESMF_LogWrite(subname//" History alarm is Created and Set", ESMF_LOGMSG_INFO)
 
     first_time = .false.
 
