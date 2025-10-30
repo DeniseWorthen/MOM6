@@ -2341,6 +2341,9 @@ subroutine ocean_model_finalize(gcomp, rc)
   call io_infra_end()
   call MOM_infra_end()
 
+  call outputAlarms_run(clock, rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
   if(write_runtimelog .and. is_root_pe()) write(stdout,*) 'In ',trim(subname),' time ', MPI_Wtime()-timefs
 
 end subroutine ocean_model_finalize
