@@ -31,14 +31,15 @@ use MOM_cap_methods,          only: ChkErr
 use MOM_ensemble_manager,     only: ensemble_manager_init
 use MOM_coms,                 only: sum_across_PEs
 
+! stubroutines for CESMCOUPLED
+use mom_cap_outputlog, only: outputlog_init, outputlog_run
+
 #ifdef CESMCOUPLED
 use shr_log_mod,             only: shr_log_setLogUnit
 use nuopc_shr_methods,       only: get_component_instance
 #endif
+
 use time_utils_mod,           only: esmf2fms_time
-
-use mom_cap_logging, only: outputAlarms_init, outputAlarms_run
-
 use, intrinsic :: iso_fortran_env, only: output_unit
 
 use ESMF,  only: ESMF_ClockAdvance, ESMF_ClockGet, ESMF_ClockPrint, ESMF_VMget
@@ -2012,45 +2013,8 @@ subroutine ModelAdvance(gcomp, rc)
     endif
   endif ! restart_mode
 
-  call outputAlarms_run(clock, rc=rc)
+  call outputlog_run(clock, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
-#ifdef test
-  call ESMF_ClockGetAlarm(clock, alarmname='history_alarm', alarm=history_alarm, rc=rc)
-  if (ChkErr(rc,__LINE__,u_FILE_u)) return
-  if (ESMF_AlarmIsRinging(history_alarm, rc=rc)) then
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    chkfile_nextAdvance = .true.
-    ! turn off the alarm
-    call ESMF_AlarmRingerOff(history_alarm, rc=rc )
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    ! set filename
-    call ESMF_ClockGetNextTime(clock, MyTime, rc=rc)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    call ESMF_TimeGet (MyTime-9*outputInterval, yy=year, mm=month, dd=day, h=hour, rc=rc )
-    !call ESMF_TimeGet (MyTime-36*outputInterval, yy=year, mm=month, dd=day, h=hour, rc=rc )
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    write(history_fname,'(a,i4.4,3(a,i2.2),a)')'ocn_',year,'_',month,'_',day,'_',hour,'.nc'
-    if(is_root_pe())print *,'XX0 '//trim(history_fname)//'  '//trim(import_timestr)//'  '//trim(export_timestr)
-  end if
-
-  if (chkfile_nextAdvance) then
-    ! check if file is written
-    inquire(file=trim(history_fname), exist=existflag)
-    if (existflag) then
-      !open and inquire unlimdim
-      rc = nf90_open(trim(history_fname), nf90_nowrite, ncid)
-      rc = nf90_inquire(ncid, unlimiteddimid=dimid)
-      rc = nf90_inquire_dimension(ncid, dimid, len=nlen)
-      rc = nf90_close(ncid)
-      if (nlen > 0) then
-        chkfile_nextAdvance = .false.
-        if(is_root_pe())print *,'XX '//trim(history_fname)//'  '//trim(import_timestr)//'  '//trim(export_timestr)//' complete'
-      else
-        if(is_root_pe())print *,'XX '//trim(history_fname)//'  '//trim(import_timestr)//'  '//trim(export_timestr)//' still 0'
-      end if
-    end if
-  end if
-#endif
 
   !---------------
   ! Write diagnostics
@@ -2250,24 +2214,9 @@ subroutine ModelSetRunClock(gcomp, rc)
     call ESMF_TimeGet(dstoptime, timestring=timestr, rc=rc)
     call ESMF_LogWrite("Stop Alarm will ring at : "//trim(timestr), ESMF_LOGMSG_INFO)
 
-    call outputAlarms_init(mclock, rc)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
-#ifdef test
-    call ESMF_TimeIntervalSet(outputInterval, h=1, rc=rc)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    call AlarmInit(mclock,        &
-         alarm   = history_alarm, &
-         option  = 'nhours',      &
-         opt_n   = 6,             &
-         opt_ymd = -999,          &
-         RefTime = mcurrTime,     &
-         alarmname = 'history_alarm', rc=rc)
+    call outputlog_init(mclock, rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    call ESMF_AlarmSet(history_alarm, clock=mclock, rc=rc)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    call ESMF_LogWrite(subname//" History alarm is Created and Set", ESMF_LOGMSG_INFO)
-#endif
     first_time = .false.
 
   endif
@@ -2341,9 +2290,8 @@ subroutine ocean_model_finalize(gcomp, rc)
   call io_infra_end()
   call MOM_infra_end()
 
-  call outputAlarms_run(clock, rc)
+  call outputlog_run(clock, rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
   if(write_runtimelog .and. is_root_pe()) write(stdout,*) 'In ',trim(subname),' time ', MPI_Wtime()-timefs
 
 end subroutine ocean_model_finalize
