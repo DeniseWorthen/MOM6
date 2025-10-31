@@ -31,15 +31,14 @@ use MOM_cap_methods,          only: ChkErr
 use MOM_ensemble_manager,     only: ensemble_manager_init
 use MOM_coms,                 only: sum_across_PEs
 
-! stubroutines for CESMCOUPLED
-use mom_cap_outputlog, only: outputlog_init, outputlog_run
-
+! stub routines for CESMCOUPLED
+use mom_cap_outputlog,       only: outputlog_init, outputlog_run
 #ifdef CESMCOUPLED
 use shr_log_mod,             only: shr_log_setLogUnit
 use nuopc_shr_methods,       only: get_component_instance
 #endif
+use time_utils_mod,          only: esmf2fms_time
 
-use time_utils_mod,           only: esmf2fms_time
 use, intrinsic :: iso_fortran_env, only: output_unit
 
 use ESMF,  only: ESMF_ClockAdvance, ESMF_ClockGet, ESMF_ClockPrint, ESMF_VMget
@@ -76,7 +75,7 @@ use ESMF,  only: ESMF_AlarmGet, ESMF_AlarmIsCreated, ESMF_ALARMLIST_ALL, ESMF_Al
 use ESMF,  only: ESMF_STATEITEM_NOTFOUND, ESMF_FieldWrite
 use ESMF,  only: ESMF_END_ABORT, ESMF_Finalize
 use ESMF,  only: ESMF_REDUCE_MAX, ESMF_REDUCE_MIN, ESMF_VMAllReduce
-use ESMF,  only: operator(==), operator(/=), operator(+), operator(-), operator(*)
+use ESMF,  only: operator(==), operator(/=), operator(+), operator(-)
 
 ! TODO ESMF_GridCompGetInternalState does not have an explicit Fortran interface.
 !! Model does not compile with "use ESMF,  only: ESMF_GridCompGetInternalState"
@@ -165,11 +164,6 @@ character(len=8)  :: restart_mode = 'alarms'
 character(len=16) :: inst_suffix = ''
 logical           :: pointer_date = .true. ! append date to rpointer
 real(8) :: timere
-
-!type(ESMF_Alarm)        :: history_alarm
-!type(ESMF_TimeInterval) :: outputInterval
-!character(len=256) :: history_fname
-!logical :: chkfile_nextAdvance = .false.
 
 contains
 
@@ -1704,9 +1698,6 @@ end subroutine DataInitialize
 !! @param gcomp an ESMF_GridComp object
 !! @param rc return code
 subroutine ModelAdvance(gcomp, rc)
-  !debug
-  use netcdf
-
   type(ESMF_GridComp)                    :: gcomp !< ESMF_GridComp object
   integer, intent(out)                   :: rc    !< return code
 
@@ -1754,9 +1745,6 @@ subroutine ModelAdvance(gcomp, rc)
   real(8)                                :: MPI_Wtime, timers
   logical                                :: write_restart, write_restartfh
   logical                                :: write_restart_eor
-  ! debug
-  !integer :: nlen, ncid, dimid
-  !character(len=256) :: fname
 
   rc = ESMF_SUCCESS
   if(profile_memory) call ESMF_VMLogMemInfo("Entering MOM Model_ADVANCE: ")
@@ -2012,7 +2000,6 @@ subroutine ModelAdvance(gcomp, rc)
       endif
     endif
   endif ! restart_mode
-
   call outputlog_run(clock, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -2048,9 +2035,6 @@ end subroutine ModelAdvance
 
 
 subroutine ModelSetRunClock(gcomp, rc)
-  ! debug
-  use ESMF, only : ESMF_TimeIntervalSet
-
   type(ESMF_GridComp)  :: gcomp
   integer, intent(out) :: rc
 
@@ -2214,9 +2198,8 @@ subroutine ModelSetRunClock(gcomp, rc)
     call ESMF_TimeGet(dstoptime, timestring=timestr, rc=rc)
     call ESMF_LogWrite("Stop Alarm will ring at : "//trim(timestr), ESMF_LOGMSG_INFO)
 
-    call outputlog_init(mclock, rc)
+    call outputlog_init(gcomp, mclock, rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
     first_time = .false.
 
   endif
