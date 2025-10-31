@@ -95,7 +95,6 @@ use NUOPC_Model, only: SetVM
 
 #ifndef CESMCOUPLED
 use shr_is_restart_fh_mod, only : init_is_restart_fh, is_restart_fh, is_restart_fh_type
-use shr_is_restart_fh_mod, only : log_restart_fh
 #endif
 
 implicit none; private
@@ -1986,13 +1985,9 @@ subroutine ModelAdvance(gcomp, rc)
 
         ! write restart file(s)
         call ocean_model_restart(ocean_state, restartname=restartname, &
-                                stoch_restartname=stoch_restartname)
-#ifndef CESMCOUPLED
-        if (is_root_pe()) then
-          call log_restart_fh(MyTime, startTime, 'mom6.res', prefixtime=.true., rc=rc)
-          if (ChkErr(rc,__LINE__,u_FILE_u)) return
-        endif
-#endif
+                                stoch_restartname=stoch_restartname, num_rest_files=num_rest_files)
+
+        call outputlog_restart(clock, num_rest_files, rc=rc)
       endif
 
       if (is_root_pe()) then
