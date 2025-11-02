@@ -32,7 +32,7 @@ use MOM_ensemble_manager,     only: ensemble_manager_init
 use MOM_coms,                 only: sum_across_PEs
 
 ! stub routines for CESMCOUPLED
-use mom_cap_outputlog,       only: outputlog_init, outputlog_run
+use mom_cap_outputlog,       only: outputlog_init, outputlog_run, outputlog_restart
 #ifdef CESMCOUPLED
 use shr_log_mod,             only: shr_log_setLogUnit
 use nuopc_shr_methods,       only: get_component_instance
@@ -1988,6 +1988,7 @@ subroutine ModelAdvance(gcomp, rc)
                                 stoch_restartname=stoch_restartname, num_rest_files=num_rest_files)
 
         call outputlog_restart(clock, num_rest_files, rc=rc)
+        if (ChkErr(rc,__LINE__,u_FILE_u)) return
       endif
 
       if (is_root_pe()) then
@@ -1995,6 +1996,7 @@ subroutine ModelAdvance(gcomp, rc)
       endif
     endif
   endif ! restart_mode
+
   call outputlog_run(clock, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -2268,8 +2270,12 @@ subroutine ocean_model_finalize(gcomp, rc)
   call io_infra_end()
   call MOM_infra_end()
 
-  call outputlog_run(clock, rc)
+  ! need to call twice to force logging of last output file
+  call outputlog_run(clock, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  call outputlog_run(clock, .true., rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
   if(write_runtimelog .and. is_root_pe()) write(stdout,*) 'In ',trim(subname),' time ', MPI_Wtime()-timefs
 
 end subroutine ocean_model_finalize
