@@ -514,7 +514,7 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
 
   rpointer_filename = 'rpointer.ocn'//trim(inst_suffix)
   if (pointer_date) then
-    write(timestamp,'(".",i4.4,"-",i2.2,"-",i2.2,"-",i5.5)'),year,month,day,hour*3600+minute*60+second
+    write(timestamp,'(".",i4.4,"-",i2.2,"-",i2.2,"-",i5.5)')year,month,day,hour*3600+minute*60+second
     inquire(file=trim(rpointer_filename//timestamp), exist=found)
     ! for backward compatibility
     if (found) then
@@ -1881,7 +1881,7 @@ subroutine ModelAdvance(gcomp, rc)
       call state_diagnose(exportState,subname//':ES ',rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
     endif
-  endif
+  endif ! do_advance
 
   !---------------
   ! Get the stop alarm
@@ -1915,7 +1915,7 @@ subroutine ModelAdvance(gcomp, rc)
          call ESMF_AlarmRingerOff(stop_alarm, rc=rc )
          if (ChkErr(rc,__LINE__,u_FILE_u)) return
        end if
-    end if
+     end if
 
 #ifndef CESMCOUPLED
     call is_restart_fh(clock, restartfh_info, write_restartfh)
