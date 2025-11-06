@@ -36,7 +36,7 @@ contains
   use ESMF                  , only : ESMF_Time, ESMF_Clock, ESMF_ClockGet, ESMF_Alarm, ESMF_AlarmSet
   use ESMF                  , only : ESMF_ClockGetAlarm, ESMF_AlarmIsRinging, ESMF_AlarmRingerOff
   use ESMF                  , only : ESMF_ClockGetNextTime, ESMF_TimeGet, ESMF_TimeInterval
-  use ESMF                  , only : ESMF_TimeIntervalSet, ESMF_TimeIntervalPrint
+  use ESMF                  , only : ESMF_AlarmGet, ESMF_TimeIntervalSet, ESMF_TimeIntervalPrint
   use ESMF                  , only : ESMF_SUCCESS, ESMF_LogWrite, ESMF_LOGMSG_INFO
   use ESMF                  , only : ESMF_LogSetError, ESMF_LogFoundError, ESMF_LOGERR_PASSTHRU
   use ESMF                  , only : operator(*), operator(+), operator(-), operator(>), operator(==)
@@ -44,28 +44,22 @@ contains
   use MOM_cap_time          , only : AlarmInit
   use shr_is_restart_fh_mod , only : log_restart_fh
   use netcdf
-  ! debug
-  use ESMF, only : ESMF_TimePrint
-  !use ESMF, only : ESMF_AlarmWasPrevRinging
 
   implicit none; private
 
   public :: outputlog_init, outputlog_run, outputlog_restart
 
   ! the allowable output frequency for MOM6 history, in hours only
-  ! TODO: 3hrly output reqs filename with minutes field
-  ! TODO: check multiple output freq for same run, reqs different
-  ! known filename root for different freqs
   integer, parameter :: n_freq  = 3
   integer, parameter, dimension(n_freq) :: freq = (/3, 6, 24/)
+  ! TODO: check multiple output freq for same run, reqs different  known filename
+  ! root for different freqs
 
-  ! the timeoffset interval (defined in minutes) is used to construct
-  ! the file name of the output
-  ! the file name must be set as the mid-point of the averaging period
-  ! via the diagtable
-  ! output filename timestrings are given by
-  !      T - (interval * offset + interval/2 * offset)
-  ! where interval is the averaging interval in minutes
+  ! the tincrement interval (defined in minutes) is used to construct the output filename
+  ! the file name must be set as the mid-point of the averaging period via the diagtable
+  ! and the output filename timestrings are given by
+  !      T - (interval * 60 * increment + interval/2 * 60 * increment )
+  ! where T is the time that the currTime when the file is closed
   !
   !   00   .   03   .   06   .   09
   !       1:30 = 6 - (3 + 1:30)
@@ -79,27 +73,22 @@ contains
   !       12 = 48 - (24 + 12)
   !                 36 = 72 - (24 + 12)
   !
-  ! when the model reaches the stop time, any 'pending' output
-  ! file is closed, and the final interval output is also closed
+  ! when the model reaches the stop time, any 'pending' output file is closed, and the final
+  ! interval output is also closed
   !
   !                   stop
   !  18   .   24   .   30
   !      21 = 30 - (12 + 3)
   !                03 = 30 - (3)
   !
-  ! since both the final interval and the next-to-final interval are
-  ! closed at the stop time, a different log file name is required for
-  ! the final log file, otherwise we over-write the next-to-final log
+  ! since both the final interval and the next-to-final interval are closed at the stop time,
+  ! a different log file name is required for  the final log file, otherwise the next-to-final
+  ! log is overwritten
   !
-  ! an output file is declared closed when the unlimited dimension in
-  ! the file is > 0
-  !
-  ! each closed output file is recorded in a logfile at the associated
-  ! forecast hour. The name of the logfile is given by
-  !     T - (interval * offset)
-  ! where T is the currTime when the file is closed
+  ! an output file is declared closed when the unlimited dimension in the file is > 0
+  ! each closed output file is recorded in a logfile at the associated forecast hour.
 
-  type(ESMF_TimeInterval) :: timeoffset
+  type(ESMF_TimeInterval) :: tincrement
   type(ESMF_Time)         :: lastrestart
 
   type :: outputlog_type
@@ -108,7 +97,8 @@ contains
     logical                 :: chkfile_nextAdvance
     character(len=1024)     :: filename
     type(ESMF_Alarm)        :: alarm
-    type(ESMF_TimeInterval) :: filename_timeoffset
+    type(ESMF_TimeInterval) :: fhoffset
+    type(ESMF_TimeInterval) :: filename_fhoffset
     type(ESMF_Time)         :: time_lastrestart
   end type outputlog_type
 
@@ -195,7 +185,7 @@ contains
 
     call ESMF_ClockGet(mclock, currTime=mcurrTime, startTime=startTime, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    call ESMF_TimeIntervalSet(timeoffset, m=1, rc=rc)
+    call ESMF_TimeIntervalSet(tincrement, m=1, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     ! initialize
@@ -203,19 +193,20 @@ contains
 
     do n = 1,n_freq
       write(chour,'(I2.2,A)')freq(n),'h'
-      olog(n)%alarm_name = 'output_alarm'//trim(chour)
-      olog(n)%opt_n = freq(n)
-      olog(n)%filename_timeoffset = 90*freq(n)*timeoffset
+      olog(n)%alarm_name          = 'output_alarm'//trim(chour)
+      olog(n)%opt_n               = freq(n)
+      olog(n)%fhoffset            = 60*freq(n)*tincrement
+      olog(n)%filename_fhoffset   = 90*freq(n)*tincrement
       olog(n)%chkfile_nextAdvance = .false.               ! alarms ring at the ouput freq, but files close on next advance
-      olog(n)%filename = ''
-      olog(n)%time_lastrestart = lastrestart
+      olog(n)%filename            = ''
+      olog(n)%time_lastrestart    = lastrestart
 
-      call AlarmInit(mclock,         &
-           alarm   = olog(n)%alarm,  &
-           option  = 'nhours',       &
-           opt_n   = olog(n)%opt_n,  &
-           opt_ymd = -999,           &
-           RefTime = mcurrTime,      &
+      call AlarmInit(mclock,           &
+           alarm     = olog(n)%alarm,  &
+           option    = 'nhours',       &
+           opt_n     = olog(n)%opt_n,  &
+           opt_ymd   = -999,           &
+           RefTime   = mcurrTime,      &
            alarmname = olog(n)%alarm_name, rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -223,7 +214,7 @@ contains
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
       call ESMF_LogWrite(trim(subname)//" Output alarm "//trim(olog(n)%alarm_name)//" is Created and Set", ESMF_LOGMSG_INFO)
       if (debug .and. is_root_pe()) then
-        call ESMF_TimeIntervalPrint(olog(n)%filename_timeoffset, options="string", rc=rc)
+        call ESMF_TimeIntervalPrint(olog(n)%filename_fhoffset, options="string", rc=rc)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
       end if
 
@@ -243,9 +234,9 @@ contains
     integer, intent(out)          :: rc         !< return code
 
     ! local variables
-    type(ESMF_Time)         :: nextTime, currTime, startTime
+    type(ESMF_Time)         :: nextTime, currTime, startTime, prevRing
     type(ESMF_TimeInterval) :: timeStep
-    logical                 :: lstop
+    logical                 :: lstop, stop_on_interval
     integer                 :: n, ncid, dimid, nlen
     integer                 :: year, month, day, hour, minute
     character(len=256)      :: import_timestr, export_timestr, importexport !debugging only
@@ -264,6 +255,7 @@ contains
     importexport = trim(import_timestr)//'  '//trim(export_timestr)
 
     lstop = .false.
+    stop_on_interval = .false.
     if (present(atStopTime)) then
       lstop = atStopTime
     end if
@@ -282,7 +274,7 @@ contains
 
           call ESMF_ClockGetNextTime(mclock, nextTime, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
-          call ESMF_TimeGet (nextTime-olog(n)%filename_timeoffset, yy=year, mm=month, dd=day, h=hour, m=minute, rc=rc )
+          call ESMF_TimeGet (nextTime-olog(n)%filename_fhoffset, yy=year, mm=month, dd=day, h=hour, m=minute, rc=rc )
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
           write(olog(n)%filename,'(A,I4.4,4(A,I2.2),A)')trim(outputdir)//'ocn_',year,'_',month,'_',day,'_',hour,'_',minute,'.nc'
 
@@ -303,8 +295,8 @@ contains
               olog(n)%chkfile_nextAdvance = .false.
               olog(n)%time_lastrestart = lastrestart
               if (is_root_pe()) then
-                call log_restart_fh(currTime-60*freq(n)*timeoffset, startTime, 'mom6.'//chour, prefixtime=.true., &
-                     lastrestart=olog(n)%time_lastrestart, lastwritten=olog(n)%filename, rc=rc)
+                call log_restart_fh(currTime-olog(n)%fhoffset, startTime, 'mom6.'//chour, prefixtime=.true., &
+                     lastrestart=olog(n)%time_lastrestart, lastoutput=olog(n)%filename, rc=rc)
                 if (ChkErr(rc,__LINE__,u_FILE_u)) return
               endif
             end if
@@ -312,9 +304,27 @@ contains
         end if
 
         if (lstop) then
-          !this doesn't work if stoptime is not on an averaging interval!
-          call ESMF_TimeGet (currTime-30*freq(n)*timeoffset, yy=year, mm=month, dd=day, h=hour, m=minute, rc=rc )
+          ! need separate logic for stopping on interval and stopping between intervals
+          call ESMF_AlarmGet(olog(n)%alarm, prevRingTime=prevring, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          if (debug .and. is_root_pe()) then
+            call ESMF_TimeGet(prevring, yy=year, mm=month, dd=day, h=hour, m=minute, rc=rc)
+            if (ChkErr(rc,__LINE__,u_FILE_u)) return
+            print '(A,I4.4,4(A,I2.2))',trim(subname)//' prevring at lstop ',year,'_',month,'_',day,'_',hour,'_',minute
+          end if
+
+          if (prevring == currTime) then
+            stop_on_interval = .true.
+          else
+            stop_on_interval = .false.
+          end if
+          if (stop_on_interval) then
+            call ESMF_TimeGet(currTime-30*freq(n)*tincrement, yy=year, mm=month, dd=day, h=hour, m=minute, rc=rc)
+            if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          else
+            call ESMF_TimeGet(prevring-30*freq(n)*tincrement, yy=year, mm=month, dd=day, h=hour, m=minute, rc=rc)
+            if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          end if
           write(olog(n)%filename,'(A,I4.4,4(A,I2.2),A)')trim(outputdir)//'ocn_',year,'_',month,'_',day,'_',hour,'_',minute,'.nc'
           if (debug .and. is_root_pe()) then
             print '(A)',trim(subname)//' fname at lstop '//trim(olog(n)%filename)//'  '//trim(importexport)
@@ -333,8 +343,13 @@ contains
               call ESMF_ClockGet(mclock, currTime=currTime, rc=rc)
               if (ChkErr(rc,__LINE__,u_FILE_u)) return
               if (is_root_pe()) then
-                call log_restart_fh(currTime-60*freq(n)*timeoffset, startTime, 'mom6.stop.'//chour, prefixtime=.true., &
-                     lastrestart=olog(n)%time_lastrestart, lastwritten=olog(n)%filename, rc=rc)
+                if (stop_on_interval) then
+                  call log_restart_fh(currTime, startTime, 'mom6.stop.'//chour, prefixtime=.true., &
+                       lastrestart=olog(n)%time_lastrestart, lastoutput=olog(n)%filename, rc=rc)
+                else
+                  call log_restart_fh(prevring, startTime, 'mom6.stop.'//chour, prefixtime=.true., &
+                       lastrestart=olog(n)%time_lastrestart, lastoutput=olog(n)%filename, rc=rc)
+                end if
                 if (ChkErr(rc,__LINE__,u_FILE_u)) return
               end if
             end if
