@@ -1,7 +1,7 @@
-!> This module contains a set of subroutines that check if MOM restart
-!! and history files have been written and closed. This file is specific
-!! to UWM operational requirements and configurations (eg specific output
-!! frequencys in hours) and may break if used outside the scope of intended use.
+!> This module contains a set of subroutines that check if MOM restart and history files
+!! have been written and closed. This file is specific to UWM operational requirements
+!! and configurations (eg specific output frequencys in hours) and may break if used outside
+!! the scope of intended use.
 !! This module a stub when CESMCOUPLED is defined
 module MOM_cap_outputlog
 
@@ -59,7 +59,7 @@ contains
   ! the file name must be set as the mid-point of the averaging period via the diagtable
   ! and the output filename timestrings are given by
   !      T - (interval * 60 * increment + interval/2 * 60 * increment )
-  ! where T is the time that the currTime when the file is closed
+  ! where T is the time when the file is closed
   !
   !   00   .   03   .   06   .   09
   !       1:30 = 6 - (3 + 1:30)
@@ -86,7 +86,7 @@ contains
   ! log is overwritten
   !
   ! an output file is declared closed when the unlimited dimension in the file is > 0
-  ! each closed output file is recorded in a logfile at the associated forecast hour.
+  ! each closed output file is recorded in a logfile named with the associated forecast hour.
 
   type(ESMF_TimeInterval) :: tincrement
   type(ESMF_Time)         :: lastrestart
@@ -110,19 +110,20 @@ contains
   character(len=256) :: outputdir
   character(len=2)   :: output_fh
   character(len=3)   :: chour
+  character(len=512) :: msgString
   character(len=*), parameter :: u_FILE_u = &
        __FILE__
 
 contains
   !> Initialize a set of Alarms at the allowed output frequencies
   !!
-  !! @param gcomp an ESMF_GridComp object
-  !! @param clock an ESMF_Clock object
-  !! @param rc    return code
+  !! @param gcomp   an ESMF_GridComp object
+  !! @param clock   an ESMF_Clock object
+  !! @param rc      return code
   subroutine outputlog_init(gcomp, mclock, rc)
 
-    type(ESMF_GridComp)  :: gcomp  !< an ESMF_GridComp object
-    type(ESMF_Clock)     :: mclock !< the ESMF_clock for the model
+    type(ESMF_GridComp)  :: gcomp  !< ESMF_GridComp object
+    type(ESMF_Clock)     :: mclock !< ESMF_clock for the model
     integer, intent(out) :: rc     !< return code
 
     ! local variables
@@ -147,7 +148,8 @@ contains
     if (restartdir(len_trim(restartdir):len_trim(restartdir)) /= '/') then
       restartdir = trim(restartdir)//'/'
     end if
-    call ESMF_LogWrite('MOM_cap:MOM6 restart directory = '//trim(restartdir), ESMF_LOGMSG_INFO)
+    write(msgString,'(A)')'MOM_cap:MOM6 restart directory = '//trim(restartdir)
+    call ESMF_LogWrite(trim(msgString), ESMF_LOGMSG_INFO)
 
     call NUOPC_CompAttributeGet(gcomp, name="mom6_output_dir", value=value, &
          isPresent=isPresent, isSet=isSet, rc=rc)
@@ -160,7 +162,8 @@ contains
     if (outputdir(len_trim(outputdir):len_trim(outputdir)) /= '/') then
       outputdir = trim(outputdir)//'/'
     end if
-    call ESMF_LogWrite('MOM_cap:MOM6 output directory = '//trim(outputdir), ESMF_LOGMSG_INFO)
+    write(msgString,'(A)')'MOM_cap:MOM6 output directory = '//trim(outputdir)
+    call ESMF_LogWrite(trim(msgString), ESMF_LOGMSG_INFO)
 
     call NUOPC_CompAttributeGet(gcomp, name="mom6_output_fh", value=value, &
          isPresent=isPresent, isSet=isSet, rc=rc)
@@ -174,7 +177,8 @@ contains
     else
       output_fh = '06'
     end if
-    call ESMF_LogWrite('MOM_cap:MOM6 output frequency = '//trim(output_fh), ESMF_LOGMSG_INFO)
+    write(msgString,'(A)')'MOM_cap:MOM6 output frequency = '//trim(output_fh)
+    call ESMF_LogWrite(trim(msgString), ESMF_LOGMSG_INFO)
 
     debug = .false.
     call NUOPC_CompAttributeGet(gcomp, name="debug_outputlog", value=value, &
@@ -197,7 +201,7 @@ contains
       olog(n)%opt_n               = freq(n)
       olog(n)%fhoffset            = 60*freq(n)*tincrement
       olog(n)%filename_fhoffset   = 90*freq(n)*tincrement
-      olog(n)%chkfile_nextAdvance = .false.               ! alarms ring at the ouput freq, but files close on next advance
+      olog(n)%chkfile_nextAdvance = .false.
       olog(n)%filename            = ''
       olog(n)%time_lastrestart    = lastrestart
 
@@ -212,21 +216,20 @@ contains
 
       call ESMF_AlarmSet(olog(n)%alarm, clock=mclock, rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-      call ESMF_LogWrite(trim(subname)//" Output alarm "//trim(olog(n)%alarm_name)//" is Created and Set", ESMF_LOGMSG_INFO)
+      write(msgString,'(A)')trim(subname)//' Output alarm '//trim(olog(n)%alarm_name)//' Created & Set'
+      call ESMF_LogWrite(trim(msgString), ESMF_LOGMSG_INFO)
       if (debug .and. is_root_pe()) then
         call ESMF_TimeIntervalPrint(olog(n)%filename_fhoffset, options="string", rc=rc)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
       end if
-
     end do
 
   end subroutine outputlog_init
-  !> Use Alarms at the output frequency to determine if output has been
-  !! completed
+  !> Use Alarms at the output frequency to determine if output has been completed
   !!
-  !! @param clock      an ESMF_Clock object
-  !! @param atStopTime when present, checks for final output file
-  !! @param rc         return code
+  !! @param clock        an ESMF_Clock object
+  !! @param atStopTime   when present, checks for final output file
+  !! @param rc           return code
   subroutine outputlog_run(mclock, atStopTime, rc)
 
     type(ESMF_Clock)              :: mclock     !< the ESMF_clock for the model
@@ -236,10 +239,11 @@ contains
     ! local variables
     type(ESMF_Time)         :: nextTime, currTime, startTime, prevRing
     type(ESMF_TimeInterval) :: timeStep
-    logical                 :: lstop, stop_on_interval
+    logical                 :: lstop
     integer                 :: n, ncid, dimid, nlen
     integer                 :: year, month, day, hour, minute
-    character(len=256)      :: import_timestr, export_timestr, importexport !debugging only
+    character(len=512)      :: import_timestr, export_timestr, importexport !debugging only
+    character(len=16)       :: timestr
     character(len=512)      :: fname
     character(len=256)      :: subname='MOM_cap:(outputlog_run) '
     !----------------------------------------------------------------------------
@@ -255,7 +259,6 @@ contains
     importexport = trim(import_timestr)//'  '//trim(export_timestr)
 
     lstop = .false.
-    stop_on_interval = .false.
     if (present(atStopTime)) then
       lstop = atStopTime
     end if
@@ -276,7 +279,8 @@ contains
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
           call ESMF_TimeGet (nextTime-olog(n)%filename_fhoffset, yy=year, mm=month, dd=day, h=hour, m=minute, rc=rc )
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
-          write(olog(n)%filename,'(A,I4.4,4(A,I2.2),A)')trim(outputdir)//'ocn_',year,'_',month,'_',day,'_',hour,'_',minute,'.nc'
+          write(timestr,'(I4.4,4(A,I2.2))')year,'_',month,'_',day,'_',hour,'_',minute
+          write(olog(n)%filename,'(A)')trim(outputdir)//'ocn_'//trim(timestr)//'.nc'
 
           if (debug .and. is_root_pe()) then
             print '(A)',trim(subname)//' fname '//trim(olog(n)%filename)//'  '//trim(importexport)
@@ -304,28 +308,21 @@ contains
         end if
 
         if (lstop) then
-          ! need separate logic for stopping on interval and stopping between intervals
+          ! use prevRing in place of currTime to allow for stopping between averaging
+          ! intervals; prevring == currTime if stopping on intervals
           call ESMF_AlarmGet(olog(n)%alarm, prevRingTime=prevring, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
           if (debug .and. is_root_pe()) then
             call ESMF_TimeGet(prevring, yy=year, mm=month, dd=day, h=hour, m=minute, rc=rc)
             if (ChkErr(rc,__LINE__,u_FILE_u)) return
-            print '(A,I4.4,4(A,I2.2))',trim(subname)//' prevring at lstop ',year,'_',month,'_',day,'_',hour,'_',minute
+            write(timestr,'(I4.4,4(A,I2.2))')year,'_',month,'_',day,'_',hour,'_',minute
+            print '(A)',trim(subname)//' prevring at lstop '//trim(timestr)
           end if
 
-          if (prevring == currTime) then
-            stop_on_interval = .true.
-          else
-            stop_on_interval = .false.
-          end if
-          if (stop_on_interval) then
-            call ESMF_TimeGet(currTime-30*freq(n)*tincrement, yy=year, mm=month, dd=day, h=hour, m=minute, rc=rc)
-            if (ChkErr(rc,__LINE__,u_FILE_u)) return
-          else
-            call ESMF_TimeGet(prevring-30*freq(n)*tincrement, yy=year, mm=month, dd=day, h=hour, m=minute, rc=rc)
-            if (ChkErr(rc,__LINE__,u_FILE_u)) return
-          end if
-          write(olog(n)%filename,'(A,I4.4,4(A,I2.2),A)')trim(outputdir)//'ocn_',year,'_',month,'_',day,'_',hour,'_',minute,'.nc'
+          call ESMF_TimeGet(prevring-30*freq(n)*tincrement, yy=year, mm=month, dd=day, h=hour, m=minute, rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          write(timestr,'(I4.4,4(A,I2.2))')year,'_',month,'_',day,'_',hour,'_',minute
+          write(olog(n)%filename,'(A)')trim(outputdir)//'ocn_'//trim(timestr)//'.nc'
           if (debug .and. is_root_pe()) then
             print '(A)',trim(subname)//' fname at lstop '//trim(olog(n)%filename)//'  '//trim(importexport)
           end if
@@ -343,13 +340,8 @@ contains
               call ESMF_ClockGet(mclock, currTime=currTime, rc=rc)
               if (ChkErr(rc,__LINE__,u_FILE_u)) return
               if (is_root_pe()) then
-                if (stop_on_interval) then
-                  call log_restart_fh(currTime, startTime, 'mom6.stop.'//chour, prefixtime=.true., &
-                       lastrestart=olog(n)%time_lastrestart, lastoutput=olog(n)%filename, rc=rc)
-                else
-                  call log_restart_fh(prevring, startTime, 'mom6.stop.'//chour, prefixtime=.true., &
-                       lastrestart=olog(n)%time_lastrestart, lastoutput=olog(n)%filename, rc=rc)
-                end if
+                call log_restart_fh(prevring, startTime, 'mom6.stop.'//chour, prefixtime=.true., &
+                     lastrestart=olog(n)%time_lastrestart, lastoutput=olog(n)%filename, rc=rc)
                 if (ChkErr(rc,__LINE__,u_FILE_u)) return
               end if
             end if
@@ -360,15 +352,16 @@ contains
           fname = trim(olog(n)%filename)
           inquire(file=fname, exist=existflag)
           if (existflag) then
-            call nf90_err(nf90_open(fname, nf90_nowrite, ncid), 'nf90_open: '//fname)
-            call nf90_err(nf90_inquire(ncid, unlimiteddimid=dimid), 'inquire unlimiteddimid')
-            call nf90_err(nf90_inquire_dimension(ncid, dimid, len=nlen), 'inquire unlimited dimension')
-            call nf90_err(nf90_close(ncid), 'close: '//fname)
+           call nf90_err(nf90_open(fname, nf90_nowrite, ncid), 'nf90_open: '//fname)
+           call nf90_err(nf90_inquire(ncid, unlimiteddimid=dimid), 'inquire unlimiteddimid')
+           call nf90_err(nf90_inquire_dimension(ncid, dimid, len=nlen), 'inquire unlimited dimension')
+           call nf90_err(nf90_close(ncid), 'close: '//fname)
             if (is_root_pe()) then
+              write(msgString,'(A)')trim(subname)//trim(fname)//' exists '//trim(importexport)
               if (nlen > 0) then
-                print '(A,L)',trim(subname)//trim(fname)//' exists '//trim(importexport)//' complete ',olog(n)%chkfile_nextAdvance
+                print '(A,L)',trim(msgString)//' complete ',olog(n)%chkfile_nextAdvance
               else
-                print '(A,L)',trim(subname)//trim(fname)//' exists '//trim(importexport)//' still 0 ',olog(n)%chkfile_nextAdvance
+                print '(A,L)',trim(msgString)//' still  0 ',olog(n)%chkfile_nextAdvance
               end if
             end if
           end if
@@ -437,10 +430,10 @@ contains
       ! check if file is written
       inquire(file=trim(fname), exist=existflag)
       if (existflag) then
-        call nf90_err(nf90_open(fname, nf90_nowrite, ncid), 'nf90_open: '//fname)
+        call nf90_err(nf90_open(trim(fname), nf90_nowrite, ncid), 'nf90_open: '//trim(fname))
         call nf90_err(nf90_inquire(ncid, unlimiteddimid=dimid), 'inquire unlimiteddimid')
         call nf90_err(nf90_inquire_dimension(ncid, dimid, len=nlen), 'inquire unlimited dimension')
-        call nf90_err(nf90_close(ncid), 'close: '//fname)
+        call nf90_err(nf90_close(ncid), 'close: '//trim(fname))
         if (nlen > 0) allDone(n) = .true.
 
         if (debug .and. is_root_pe()) then
