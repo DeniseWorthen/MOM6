@@ -99,6 +99,7 @@ contains
     type(ESMF_Alarm)        :: alarm
     type(ESMF_TimeInterval) :: fhoffset
     type(ESMF_TimeInterval) :: filename_fhoffset
+    type(ESMF_TimeInterval) :: fh_iauoffset
     type(ESMF_Time)         :: time_lastrestart
   end type outputlog_type
 
@@ -130,9 +131,13 @@ contains
     type(ESMF_Time)         :: mcurrTime, startTime
     type(ESMF_TimeInterval) :: timestep
     logical                 :: isPresent, isSet
+    integer                 :: iau_offset
     integer                 :: n
     character(len=256)      :: value
     character(len=256)      :: subname='MOM_cap:(outputlog_init) '
+    !debug
+    character(len=16) :: timestr
+    integer :: year,month,day,hour,minute
     !----------------------------------------------------------------------------
 
     rc = ESMF_SUCCESS
@@ -180,6 +185,16 @@ contains
     write(msgString,'(A)')'MOM_cap:MOM6 output frequency = '//trim(output_fh)
     call ESMF_LogWrite(trim(msgString), ESMF_LOGMSG_INFO)
 
+    iau_offset = 0
+    call NUOPC_CompAttributeGet(gcomp, name="iau_offset", value=value, &
+         isPresent=isPresent, isSet=isSet, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    if (isPresent .and. isSet) then
+      read(value,*)iau_offset
+    end if
+    write(msgString,'(A,i6)')'MOM_cap:MOM6 iau_offset ',iau_offset
+    call ESMF_LogWrite(trim(msgString), ESMF_LOGMSG_INFO)
+
     debug = .false.
     call NUOPC_CompAttributeGet(gcomp, name="debug_outputlog", value=value, &
          isPresent=isPresent, isSet=isSet, rc=rc)
@@ -195,6 +210,11 @@ contains
     ! initialize
     lastrestart = startTime
 
+    call ESMF_TimeGet (mcurrTime-iau_offset*30*tincrement, yy=year, mm=month, dd=day, h=hour, m=minute, rc=rc )
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    write(timestr,'(I4.4,4(A,I2.2))')year,'_',month,'_',day,'_',hour,'_',minute
+    if (debug .and. is_root_pe())print *,'XXX ',trim(timestr)
+
     do n = 1,n_freq
       write(chour,'(I2.2,A)')freq(n),'h'
       olog(n)%alarm_name          = 'output_alarm'//trim(chour)
@@ -204,13 +224,18 @@ contains
       olog(n)%chkfile_nextAdvance = .false.
       olog(n)%filename            = ''
       olog(n)%time_lastrestart    = lastrestart
+      if (freq(n) .eq. 6) then
+        olog(n)%fh_iauoffset      = iau_offset*30*tincrement
+      else
+        olog(n)%fh_iauoffset      = 0
+      end if
 
-      call AlarmInit(mclock,           &
-           alarm     = olog(n)%alarm,  &
-           option    = 'nhours',       &
-           opt_n     = olog(n)%opt_n,  &
-           opt_ymd   = -999,           &
-           RefTime   = mcurrTime,      &
+      call AlarmInit(mclock,                           &
+           alarm     = olog(n)%alarm,                  &
+           option    = 'nhours',                       &
+           opt_n     = olog(n)%opt_n,                  &
+           opt_ymd   = -999,                           &
+           RefTime   = mcurrTime-olog(n)%fh_iauoffset, &
            alarmname = olog(n)%alarm_name, rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -271,6 +296,9 @@ contains
         ! when the alarm rings, set file check on next advance and construct the filename
         if (ESMF_AlarmIsRinging(olog(n)%alarm, rc=rc)) then
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          if (debug .and. is_root_pe()) then
+            print *,'XXXX alarm is ringing '//trim(importexport)
+          end if
           call ESMF_AlarmRingerOff(olog(n)%alarm, rc=rc )
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
           olog(n)%chkfile_nextAdvance = .true.
