@@ -129,7 +129,7 @@ contains
     integer, intent(out) :: rc     !< return code
 
     ! local variables
-    type(ESMF_Time)         :: mcurrTime, startTime
+    type(ESMF_Time)         :: mcurrTime
     type(ESMF_TimeInterval) :: timestep
     logical                 :: isPresent, isSet
     integer                 :: iau_offset
@@ -138,7 +138,6 @@ contains
     character(len=256)      :: subname='MOM_cap:(outputlog_init) '
     !debug
     character(len=16) :: timestr
-    integer :: year,month,day,hour,minute
     !----------------------------------------------------------------------------
 
     rc = ESMF_SUCCESS
@@ -205,13 +204,13 @@ contains
     if (isPresent .and. isSet) debug=(trim(value)=="true")
     if (debug) call ESMF_LogWrite('MOM_cap:MOM6 output debug ON', ESMF_LOGMSG_INFO)
 
-    call ESMF_ClockGet(mclock, currTime=mcurrTime, startTime=startTime, rc=rc)
+    call ESMF_ClockGet(mclock, currTime=mcurrTime, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     call ESMF_TimeIntervalSet(tincrement, m=1, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     ! initialize
-    lastrestart = startTime
+    lastrestart = mcurrTime
 
     timestr = get_timestr(mcurrTime-iau_offset*30*tincrement, rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -227,17 +226,17 @@ contains
       olog(n)%filename            = ''
       olog(n)%time_lastrestart    = lastrestart
       if (freq(n) .eq. 6) then
-        olog(n)%fh_iauoffset      = iau_offset*30*tincrement
+        olog(n)%fh_iauoffset      = iau_offset*60*tincrement
       else
         olog(n)%fh_iauoffset      = 0*tincrement
       end if
 
-      call AlarmInit(mclock,                           &
-           alarm     = olog(n)%alarm,                  &
-           option    = 'nhours',                       &
-           opt_n     = olog(n)%opt_n,                  &
-           opt_ymd   = -999,                           &
-           RefTime   = mcurrTime-olog(n)%fh_iauoffset, &
+      call AlarmInit(mclock,                               &
+           alarm     = olog(n)%alarm,                      &
+           option    = 'nhours',                           &
+           opt_n     = olog(n)%opt_n,                      &
+           opt_ymd   = -999,                               &
+           RefTime   = mcurrTime-iau_offset*30*tincrement, &
            alarmname = olog(n)%alarm_name, rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -268,7 +267,6 @@ contains
     type(ESMF_TimeInterval) :: timeStep
     logical                 :: lstop
     integer                 :: n, ncid, dimid, nlen(1)
-    integer                 :: year, month, day, hour, minute
     character(len=512)      :: import_timestr, export_timestr, importexport !debugging only
     character(len=16)       :: timestr
     character(len=512)      :: fname
@@ -298,21 +296,22 @@ contains
         ! when the alarm rings, set file check on next advance and construct the filename
         if (ESMF_AlarmIsRinging(olog(n)%alarm, rc=rc)) then
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
-          if (debug .and. is_root_pe()) then
-            print *,'XXXX alarm is ringing '//trim(importexport)
-          end if
+          ! if (debug .and. is_root_pe()) then
+          !   print *,'XXXX alarm is ringing '//trim(importexport)
+          ! end if
           call ESMF_AlarmRingerOff(olog(n)%alarm, rc=rc )
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
           olog(n)%chkfile_nextAdvance = .true.
 
           call ESMF_ClockGetNextTime(mclock, nextTime, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
-          timestr = get_timestr(nextTime-olog(n)%filename_fhoffset, rc)
+          timestr = get_timestr(nextTime-olog(n)%filename_fhoffset+olog(n)%fh_iauoffset, rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
           write(olog(n)%filename,'(A)')trim(outputdir)//'ocn_'//trim(timestr)//'.nc'
 
           if (debug .and. is_root_pe()) then
-            print '(A)',trim(subname)//' fname '//trim(olog(n)%filename)//'  '//trim(importexport)
+             print '(A,L)',trim(subname)//' fname '//trim(olog(n)%filename)//'  '//trim(importexport) &
+                  //' checkflag ',olog(n)%chkfile_nextAdvance
           end if
         end if
 
@@ -321,7 +320,7 @@ contains
           inquire(file=fname, exist=existflag)
           if (existflag) then
             if (is_root_pe()) then
-              nlen(1) = get_unlimited_len(trim(fname))
+              nlen(1) = get_unlimited_len(trim(fname), trim(importexport))
             end if
             call ESMF_VMBroadCast(vm, nlen, 1, 0, rc=rc)
             if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -329,7 +328,8 @@ contains
               olog(n)%chkfile_nextAdvance = .false.
               olog(n)%time_lastrestart = lastrestart
               if (is_root_pe()) then
-                call log_restart_fh(currTime-olog(n)%fhoffset, startTime, 'mom6.'//chour, prefixtime=.true., &
+                call log_restart_fh(currTime-olog(n)%fhoffset+olog(n)%fh_iauoffset, startTime, &
+                     'mom6.'//chour, prefixtime=.true., &
                      lastrestart=olog(n)%time_lastrestart, lastoutput=olog(n)%filename, rc=rc)
                 if (ChkErr(rc,__LINE__,u_FILE_u)) return
               endif
@@ -359,7 +359,7 @@ contains
           inquire(file=fname, exist=existflag)
           if (existflag) then
             if (is_root_pe()) then
-              nlen(1) = get_unlimited_len(fname)
+              nlen(1) = get_unlimited_len(fname,trim(importexport))
             end if
             call ESMF_VMBroadCast(vm, nlen, 1, 0, rc=rc)
             if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -381,7 +381,7 @@ contains
           fname = trim(olog(n)%filename)
           inquire(file=fname, exist=existflag)
           if (existflag) then
-            nlen(1) = get_unlimited_len(fname)
+            nlen(1) = get_unlimited_len(fname,' ')
             write(msgString,'(A)')trim(subname)//trim(fname)//' exists '//trim(importexport)
             if (nlen(1) > 0) then
               print '(A,L)',trim(msgString)//' complete ',olog(n)%chkfile_nextAdvance
@@ -408,7 +408,7 @@ contains
     ! local variables
     type(ESMF_Time)         :: startTime, currTime, nextTime
     type(ESMF_TimeInterval) :: timestep
-  integer                 :: n, ncid, dimid, nlen(1)
+    integer                 :: n, ncid, dimid, nlen(1)
     integer                 :: year, month, day, hour, minute, seconds
     character(len=512)      :: fname
     character(len=15)       :: timestr
@@ -455,7 +455,7 @@ contains
       inquire(file=trim(fname), exist=existflag)
       if (existflag) then
         if (is_root_pe())then
-          nlen(1) = get_unlimited_len(trim(fname))
+          nlen(1) = get_unlimited_len(trim(fname),' ')
         end if
         call ESMF_VMBroadCast(vm, nlen, 1, 0, rc=rc)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -486,18 +486,34 @@ contains
   !!
   !! @param[in]  fname   the file name
   !! @return             unlimited dimension length
-  integer function get_unlimited_len(fname) result(unlen)
+  integer function get_unlimited_len(fname,string) result(unlen)
 
     character(len=*), intent(in) :: fname
+    character(len=*), intent(in) :: string
 
     integer :: ncid, dimid
+    ! debug
+    integer :: varid
+    real(kind=8) :: tval
+    character(len=4) :: dimname
     !----------------------------------------------------------------------------
 
+    tval = 1.0e36
+    dimname = ''
     unlen = 0
     call nf90_err(nf90_open(trim(fname), nf90_nowrite, ncid), 'nf90_open: '//trim(fname))
     call nf90_err(nf90_inquire(ncid, unlimiteddimid=dimid), 'inquire unlimiteddimid')
     call nf90_err(nf90_inquire_dimension(ncid, dimid, len=unlen), 'inquire unlimited dimension')
+    if (unlen > 0) then
+      call nf90_err(nf90_inquire_dimension(ncid, dimid, name=dimname), 'inquire unlimited dimension name')
+      call nf90_err(nf90_inq_varid(ncid, dimname, varid), 'get variable Id: unlimited dimension '//trim(fname))
+      call nf90_err(nf90_get_var(ncid, varid, tval), 'get variable: unlimited dimension value '//trim(fname))
+    end if
     call nf90_err(nf90_close(ncid), 'close: '//trim(fname))
+
+    if (len_trim(string) > 0) then
+      print '(A,g14.7,i8)','checkdim '//trim(string)//' '//trim(dimname)//' =  ',tval,unlen
+    end if
 
   end function get_unlimited_len
   !> Convert ESMF_Time to a formatted 16-character string

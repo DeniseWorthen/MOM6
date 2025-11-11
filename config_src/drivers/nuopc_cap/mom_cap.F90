@@ -1937,7 +1937,7 @@ subroutine ModelAdvance(gcomp, rc)
         call ESMF_VMGet(vm, localPet=localPet, rc=rc)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-        write(timestamp,'(".",i4.4,"-",i2.2,"-",i2.2,"-",i5.5)'),year,month,day,hour*3600+minute*60+seconds
+        write(timestamp,'(".",i4.4,"-",i2.2,"-",i2.2,"-",i5.5)')year,month,day,hour*3600+minute*60+seconds
 
         rpointer_filename = 'rpointer.ocn'//trim(inst_suffix)
         if (pointer_date) then
