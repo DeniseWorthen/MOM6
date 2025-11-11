@@ -311,7 +311,7 @@ contains
 
           if (debug .and. is_root_pe()) then
              print '(A,L)',trim(subname)//' fname '//trim(olog(n)%filename)//'  '//trim(importexport) &
-                  //' checkflag = ',olog(n)%chkfile_nextAdvance
+                  //' checkflag ',olog(n)%chkfile_nextAdvance
           end if
         end if
 
@@ -381,7 +381,7 @@ contains
           fname = trim(olog(n)%filename)
           inquire(file=fname, exist=existflag)
           if (existflag) then
-            nlen(1) = get_unlimited_len(fname)
+            nlen(1) = get_unlimited_len(fname,' ')
             write(msgString,'(A)')trim(subname)//trim(fname)//' exists '//trim(importexport)
             if (nlen(1) > 0) then
               print '(A,L)',trim(msgString)//' complete ',olog(n)%chkfile_nextAdvance
