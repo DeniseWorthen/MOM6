@@ -320,7 +320,7 @@ contains
           inquire(file=fname, exist=existflag)
           if (existflag) then
             if (is_root_pe()) then
-              nlen(1) = get_unlimited_len(trim(fname))
+              nlen(1) = get_unlimited_len(trim(fname), trim(importexport))
             end if
             call ESMF_VMBroadCast(vm, nlen, 1, 0, rc=rc)
             if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -359,7 +359,7 @@ contains
           inquire(file=fname, exist=existflag)
           if (existflag) then
             if (is_root_pe()) then
-              nlen(1) = get_unlimited_len(fname)
+              nlen(1) = get_unlimited_len(fname,trim(importexport))
             end if
             call ESMF_VMBroadCast(vm, nlen, 1, 0, rc=rc)
             if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -455,7 +455,7 @@ contains
       inquire(file=trim(fname), exist=existflag)
       if (existflag) then
         if (is_root_pe())then
-          nlen(1) = get_unlimited_len(trim(fname))
+          nlen(1) = get_unlimited_len(trim(fname),' ')
         end if
         call ESMF_VMBroadCast(vm, nlen, 1, 0, rc=rc)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -486,18 +486,34 @@ contains
   !!
   !! @param[in]  fname   the file name
   !! @return             unlimited dimension length
-  integer function get_unlimited_len(fname) result(unlen)
+  integer function get_unlimited_len(fname,string) result(unlen)
 
     character(len=*), intent(in) :: fname
+    character(len=*), intent(in) :: string
 
     integer :: ncid, dimid
+    ! debug
+    integer :: varid
+    real(kind=8) :: tval
+    character(len=4) :: dimname
     !----------------------------------------------------------------------------
 
+    tval = 1.0e36
+    dimname = ''
     unlen = 0
     call nf90_err(nf90_open(trim(fname), nf90_nowrite, ncid), 'nf90_open: '//trim(fname))
     call nf90_err(nf90_inquire(ncid, unlimiteddimid=dimid), 'inquire unlimiteddimid')
     call nf90_err(nf90_inquire_dimension(ncid, dimid, len=unlen), 'inquire unlimited dimension')
+    if (unlen > 0) then
+      call nf90_err(nf90_inquire_dimension(ncid, dimid, name=dimname), 'inquire unlimited dimension name')
+      call nf90_err(nf90_inq_varid(ncid, dimname, varid), 'get variable Id: unlimited dimension '//trim(fname))
+      call nf90_err(nf90_get_var(ncid, varid, tval), 'get variable: unlimited dimension value '//trim(fname))
+    end if
     call nf90_err(nf90_close(ncid), 'close: '//trim(fname))
+
+    if (len_trim(string) > 0) then
+      print '(A,g14.7,i8)','checkdim '//trim(string)//' '//trim(dimname)//' =  ',tval,unlen
+    end if
 
   end function get_unlimited_len
   !> Convert ESMF_Time to a formatted 16-character string
