@@ -213,9 +213,8 @@ contains
     ! initialize
     lastrestart = startTime
 
-    call ESMF_TimeGet (mcurrTime-iau_offset*30*tincrement, yy=year, mm=month, dd=day, h=hour, m=minute, rc=rc )
+    timestr = get_timestr(mcurrTime-iau_offset*30*tincrement, rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    write(timestr,'(I4.4,4(A,I2.2))')year,'_',month,'_',day,'_',hour,'_',minute
     if (debug .and. is_root_pe())print *,'XXX ',trim(timestr)
 
     do n = 1,n_freq
@@ -268,7 +267,7 @@ contains
     type(ESMF_Time)         :: nextTime, currTime, startTime, prevRing
     type(ESMF_TimeInterval) :: timeStep
     logical                 :: lstop
-  integer                 :: n, ncid, dimid, nlen(1)
+    integer                 :: n, ncid, dimid, nlen(1)
     integer                 :: year, month, day, hour, minute
     character(len=512)      :: import_timestr, export_timestr, importexport !debugging only
     character(len=16)       :: timestr
@@ -308,9 +307,8 @@ contains
 
           call ESMF_ClockGetNextTime(mclock, nextTime, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
-          call ESMF_TimeGet (nextTime-olog(n)%filename_fhoffset, yy=year, mm=month, dd=day, h=hour, m=minute, rc=rc )
+          timestr = get_timestr(nextTime-olog(n)%filename_fhoffset, rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
-          write(timestr,'(I4.4,4(A,I2.2))')year,'_',month,'_',day,'_',hour,'_',minute
           write(olog(n)%filename,'(A)')trim(outputdir)//'ocn_'//trim(timestr)//'.nc'
 
           if (debug .and. is_root_pe()) then
@@ -345,15 +343,13 @@ contains
           call ESMF_AlarmGet(olog(n)%alarm, prevRingTime=prevring, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
           if (debug .and. is_root_pe()) then
-            call ESMF_TimeGet(prevring, yy=year, mm=month, dd=day, h=hour, m=minute, rc=rc)
+            timestr = get_timestr(prevring, rc)
             if (ChkErr(rc,__LINE__,u_FILE_u)) return
-            write(timestr,'(I4.4,4(A,I2.2))')year,'_',month,'_',day,'_',hour,'_',minute
             print '(A)',trim(subname)//' prevring at lstop '//trim(timestr)
           end if
 
-          call ESMF_TimeGet(prevring-30*freq(n)*tincrement, yy=year, mm=month, dd=day, h=hour, m=minute, rc=rc)
+          timestr = get_timestr(prevring-30*freq(n)*tincrement, rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
-          write(timestr,'(I4.4,4(A,I2.2))')year,'_',month,'_',day,'_',hour,'_',minute
           write(olog(n)%filename,'(A)')trim(outputdir)//'ocn_'//trim(timestr)//'.nc'
           if (debug .and. is_root_pe()) then
             print '(A)',trim(subname)//' fname at lstop '//trim(olog(n)%filename)//'  '//trim(importexport)
@@ -504,14 +500,32 @@ contains
     call nf90_err(nf90_close(ncid), 'close: '//trim(fname))
 
   end function get_unlimited_len
+  !> Convert ESMF_Time to a formatted 16-character string
+  !!
+  !! @param[in]  timevalue   an ESMF_Time object
+  !! @param[out] rc          return code
+  !! @return                 16-character formatted time string (YYYY_MM_DD_HH_MM)
+  character(len=16) function get_timestr(timevalue, rc) result(timestr)
 
+    type(ESMF_Time), intent(in)  :: timevalue
+    integer,         intent(out) :: rc
+
+    integer :: year, month, day, hour, minute
+    !----------------------------------------------------------------------------
+
+    rc = ESMF_SUCCESS
+    call ESMF_TimeGet(timevalue, yy=year, mm=month, dd=day, h=hour, m=minute, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    write(timestr,'(I4.4,4(A,I2.2))')year,'_',month,'_',day,'_',hour,'_',minute
+
+  end function get_timestr
   !> Handle netcdf errors
   !!
   !! @param[in]  ierr        the error code
   !! @param[in]  string      the error message
   subroutine nf90_err(ierr, string)
 
-    integer ,         intent(in) :: ierr
+    integer,          intent(in) :: ierr
     character(len=*), intent(in) :: string
     !----------------------------------------------------------------------------
 
