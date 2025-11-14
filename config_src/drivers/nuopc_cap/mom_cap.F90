@@ -1909,13 +1909,13 @@ subroutine ModelAdvance(gcomp, rc)
     write_restart_eor = .false.
     if (restart_eor) then
       if (ESMF_AlarmIsRinging(stop_alarm, rc=rc)) then
-         if (ChkErr(rc,__LINE__,u_FILE_u)) return
-         write_restart_eor = .true.
-         ! turn off the alarm
-         call ESMF_AlarmRingerOff(stop_alarm, rc=rc )
-         if (ChkErr(rc,__LINE__,u_FILE_u)) return
-       end if
-     end if
+        if (ChkErr(rc,__LINE__,u_FILE_u)) return
+        write_restart_eor = .true.
+        ! turn off the alarm
+        call ESMF_AlarmRingerOff(stop_alarm, rc=rc )
+        if (ChkErr(rc,__LINE__,u_FILE_u)) return
+      end if
+    end if
 
 #ifndef CESMCOUPLED
     call is_restart_fh(clock, restartfh_info, write_restartfh)
