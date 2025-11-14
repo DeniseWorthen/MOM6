@@ -362,7 +362,7 @@ contains
               olog(n)%chkfile_nextAdvance = .false.
               olog(n)%time_lastrestart = lastrestart
               if (is_root_pe()) then
-                call log_restart_fh(prevring, startTime, 'mom6.stop.'//chour, prefixtime=.true., &
+                call log_restart_fh(prevring, startTime, 'mom6.'//chour, prefixtime=.true., &
                      lastrestart=olog(n)%time_lastrestart, lastoutput=olog(n)%filename, rc=rc)
                 if (ChkErr(rc,__LINE__,u_FILE_u)) return
               end if
@@ -407,7 +407,7 @@ contains
     importexport = get_importexport(currTime, nextTime, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    call ESMF_TimeGet (nextTime, yy=year, mm=month, dd=day, h=hour, m=minute, s=seconds, rc=rc )
+    call ESMF_TimeGet(nextTime, yy=year, mm=month, dd=day, h=hour, m=minute, s=seconds, rc=rc )
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     write(timestr,'(I4.4,2(I2.2),A,3(I2.2))') year, month, day,".", hour, minute, seconds
 
