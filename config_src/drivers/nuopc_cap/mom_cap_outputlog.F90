@@ -338,7 +338,7 @@ contains
             if (nlen(1) > 0 .and. fsize > olog(n)%filesize) then
               olog(n)%chkfile_nextAdvance = .false.
               olog(n)%time_lastrestart = lastrestart
-              !olog(n)%filesize = fsize
+               olog(n)%filesize = fsize
               if (is_root_pe()) then
                 !if (toffset > 0) then
                 !  call log_restart_fh(nextTime-olog(n)%fhoffset, startTime, 'mom6.'//chour, prefixtime=.true., &
