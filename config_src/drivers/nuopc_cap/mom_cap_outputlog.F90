@@ -97,6 +97,7 @@ contains
     integer                 :: opt_n
     logical                 :: chkfile_nextAdvance
     character(len=1024)     :: filename
+    integer                 :: filesize
     type(ESMF_Alarm)        :: alarm
     type(ESMF_TimeInterval) :: fhoffset
     type(ESMF_TimeInterval) :: filename_fhoffset
@@ -217,6 +218,7 @@ contains
       olog(n)%opt_n               = freq(n)
       olog(n)%chkfile_nextAdvance = .false.
       olog(n)%filename            = ''
+      olog(n)%filesize            = 0
       olog(n)%time_lastrestart    = lastrestart
       olog(n)%fhoffset            = 60*freq(n)*tincrement
       olog(n)%filename_fhoffset   = 90*freq(n)*tincrement
@@ -263,7 +265,7 @@ contains
     type(ESMF_Time)    :: nextTime, currTime, startTime, prevRing
     logical            :: lstop
     integer            :: n, nlen(1)
-    integer            :: filesize
+    integer            :: fsize
     character(len=40)  :: importexport
     character(len=16)  :: timestr
     character(len=512) :: fname
@@ -299,15 +301,32 @@ contains
           timestr = get_timestr(nextTime-olog(n)%filename_fhoffset, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
           write(olog(n)%filename,'(A)')trim(outputdir)//'ocn_'//trim(timestr)//'.nc'
+
+          fname = trim(olog(n)%filename)
+          inquire(file=fname, size=olog(n)%filesize)
+
           if (debug .and. is_root_pe()) then
-             print '(A,L)',trim(subname)//' fname '//trim(olog(n)%filename)//'  '//trim(importexport) &
-                  //' checkflag ',olog(n)%chkfile_nextAdvance
+             print '(A,L,i8)',trim(subname)//' fname '//trim(olog(n)%filename)//'  '//trim(importexport) &
+                  //' checkflag ',olog(n)%chkfile_nextAdvance,olog(n)%filesize
           end if
         end if
+!2526:204: XXX ./MOM6_OUTPUT/ocn_2021_03_22_09_00.nc  2021-03-22T21:00:00  2021-03-22T22:00:00            -1
+!2585:204: XXX ./MOM6_OUTPUT/ocn_2021_03_22_09_00.nc  2021-03-22T22:00:00  2021-03-22T23:00:00            -1
+!2652:204: XXX ./MOM6_OUTPUT/ocn_2021_03_22_15_00.nc  2021-03-22T23:00:00  2021-03-23T00:00:00       9355692
+!2767:204: XXX ./MOM6_OUTPUT/ocn_2021_03_22_15_00.nc  2021-03-23T00:00:00  2021-03-23T01:00:00      90532460
+!2827:204: XXX ./MOM6_OUTPUT/ocn_2021_03_22_15_00.nc  2021-03-23T01:00:00  2021-03-23T02:00:00      90532460
+
+        fname = trim(olog(n)%filename)
+        inquire(file=fname, exist=existflag, size=fsize)
+        if (debug .and. is_root_pe()) then
+          print '(A,3i12)','XXX '//trim(olog(n)%filename)//'  '//trim(importexport)//'  ',fsize
+        endif
+        !if (debug .and. is_root_pe()) call debug_info(trim(subname)//'X  ',trim(olog(n)%filename), &
+        !     olog(n)%chkfile_nextAdvance, importexport)
 
         if (olog(n)%chkfile_nextAdvance) then
           fname = trim(olog(n)%filename)
-          inquire(file=fname, exist=existflag)
+          inquire(file=fname, exist=existflag, size=fsize)
           if (existflag) then
             if (is_root_pe()) then
               nlen(1) = get_unlimited_len(trim(fname))
@@ -315,26 +334,31 @@ contains
             call ESMF_VMBroadCast(vm, nlen, 1, 0, rc=rc)
             if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-            if (nlen(1) > 0) then
+            !if (nlen(1) > 0) then
+            if (nlen(1) > 0 .and. fsize > olog(n)%filesize) then
               olog(n)%chkfile_nextAdvance = .false.
               olog(n)%time_lastrestart = lastrestart
+              !olog(n)%filesize = fsize
               if (is_root_pe()) then
-                if (toffset > 0) then
-                  call log_restart_fh(nextTime-olog(n)%fhoffset, startTime, 'mom6.'//chour, prefixtime=.true., &
-                       lastrestart=olog(n)%time_lastrestart, lastoutput=olog(n)%filename, rc=rc)
-                  if (ChkErr(rc,__LINE__,u_FILE_u)) return
-                else
+                !if (toffset > 0) then
+                !  call log_restart_fh(nextTime-olog(n)%fhoffset, startTime, 'mom6.'//chour, prefixtime=.true., &
+                !       lastrestart=olog(n)%time_lastrestart, lastoutput=olog(n)%filename, rc=rc)
+                !  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+                !else
                   call log_restart_fh(currTime-olog(n)%fhoffset, startTime, 'mom6.'//chour, prefixtime=.true., &
                        lastrestart=olog(n)%time_lastrestart, lastoutput=olog(n)%filename, rc=rc)
                   if (ChkErr(rc,__LINE__,u_FILE_u)) return
-                end if
+                  !call log_restart_fh(nextTime-olog(n)%fhoffset, startTime, 'mom6.ntime.'//chour, prefixtime=.true., &
+                  !     lastrestart=olog(n)%time_lastrestart, lastoutput=olog(n)%filename, rc=rc)
+                  !if (ChkErr(rc,__LINE__,u_FILE_u)) return
+                !end if
               endif
             end if
           end if ! existflag
         end if
 
-        if (debug .and. is_root_pe()) call debug_info(trim(subname)//'  ',trim(fname), &
-             olog(n)%chkfile_nextAdvance, importexport)
+        if (debug .and. is_root_pe()) call debug_info(trim(subname)//'  ',trim(olog(n)%filename), &
+             olog(n)%chkfile_nextAdvance, olog(n)%filesize, importexport)
 
         if (lstop) then
           ! use prevRing in place of currTime to allow for stopping between averaging intervals
@@ -345,12 +369,12 @@ contains
           timestr = get_timestr(prevring-30*freq(n)*tincrement, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
           write(olog(n)%filename,'(A)')trim(outputdir)//'ocn_'//trim(timestr)//'.nc'
-          if (debug .and. is_root_pe()) then
-            print '(A)',trim(subname)//' fname at lstop '//trim(olog(n)%filename)//'  '//trim(importexport)
-          end if
+          !if (debug .and. is_root_pe()) then
+          !  print '(A)',trim(subname)//' fname at lstop '//trim(olog(n)%filename)//'  '//trim(importexport)
+          !end if
 
           fname = trim(olog(n)%filename)
-          inquire(file=fname, exist=existflag)
+          inquire(file=fname, exist=existflag, size=fsize)
           if (existflag) then
             if (is_root_pe()) then
               nlen(1) = get_unlimited_len(fname)
@@ -361,17 +385,20 @@ contains
             if (nlen(1) > 0) then
               olog(n)%chkfile_nextAdvance = .false.
               olog(n)%time_lastrestart = lastrestart
+              olog(n)%filesize = fsize
               if (is_root_pe()) then
-                call log_restart_fh(prevring, startTime, 'mom6.'//chour, prefixtime=.true., &
+                call log_restart_fh(prevring, startTime, 'mom6.lstop.'//chour, prefixtime=.true., &
                      lastrestart=olog(n)%time_lastrestart, lastoutput=olog(n)%filename, rc=rc)
                 if (ChkErr(rc,__LINE__,u_FILE_u)) return
               end if
             end if
           end if
 
-          if (debug .and. is_root_pe()) call debug_info(trim(subname)//' lstop ',trim(fname), &
-              olog(n)%chkfile_nextAdvance, importexport)
+          if (debug .and. is_root_pe()) call debug_info(trim(subname)//' lstop ',trim(olog(n)%filename), &
+               olog(n)%chkfile_nextAdvance, olog(n)%filesize, importexport)
+
         end if ! lstop
+
       end if ! chour = output_fh
     end do
   end subroutine outputlog_run
@@ -522,17 +549,20 @@ contains
   !! @param[in] chkflag        logical flag for checking next Advance
   !! @param[in] timestring     a timestring
   !! @param [out]rc            return code
-  subroutine debug_info(tag,fname,chkflag,timestring)
+  subroutine debug_info(tag,fname,chkflag,filesize,timestring)
 
     character(len=*), intent(in) :: tag
     character(len=*), intent(in) :: fname
+    integer, intent(in)          :: filesize
     logical,          intent(in) :: chkflag
     character(len=*), intent(in) :: timestring
 
-    integer :: nlen(1), filesize
+    integer :: nlen(1)
+    !integer :: nlen(1), filesize
     !----------------------------------------------------------------------------
 
-    inquire(file=fname, exist=existflag, size=filesize)
+    inquire(file=fname, exist=existflag)
+    !inquire(file=fname, exist=existflag, size=filesize)
     if (existflag) then
       nlen(1) = get_unlimited_len(fname)
       write(msgString,'(A)')tag//'  '//fname//' exists '//timestring
