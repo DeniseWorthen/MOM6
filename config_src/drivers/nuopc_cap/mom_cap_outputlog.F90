@@ -286,6 +286,7 @@ contains
       lstop = atStopTime
     end if
 
+    nlen(1) = 0
     do n = 1,n_freq
       write(chour,'(I2.2,A)')freq(n),'h'
       if (chour(1:2) == output_fh(1:2)) then
@@ -371,9 +372,8 @@ contains
         !       '  ',olog(n)%chkfile_nextAdvance
         !endif
 
-
-        !if (debug .and. is_root_pe()) call debug_info(trim(subname)//'  ',trim(olog(n)%filename), &
-        !     olog(n)%chkfile_nextAdvance, olog(n)%filesize, importexport)
+        if (debug .and. is_root_pe()) call debug_info(trim(subname)//'  ',trim(olog(n)%filename), &
+             olog(n)%chkfile_nextAdvance, olog(n)%filesize, importexport)
 
         if (lstop) then
           ! use prevRing in place of currTime to allow for stopping between averaging intervals
@@ -409,8 +409,8 @@ contains
             end if
           end if
 
-          !if (debug .and. is_root_pe()) call debug_info(trim(subname)//' lstop ',trim(olog(n)%filename), &
-          !     olog(n)%chkfile_nextAdvance, olog(n)%filesize, importexport)
+          if (debug .and. is_root_pe()) call debug_info(trim(subname)//' lstop ',trim(olog(n)%filename), &
+               olog(n)%chkfile_nextAdvance, olog(n)%filesize, importexport)
 
         end if ! lstop
 
@@ -561,6 +561,7 @@ contains
   !!
   !! @param[in] tag            an information tag
   !! @param[in] fname          the filename to check
+  !! @param[in] filesize       the filesize at creation time
   !! @param[in] chkflag        logical flag for checking next Advance
   !! @param[in] timestring     a timestring
   !! @param [out]rc            return code
@@ -568,23 +569,20 @@ contains
 
     character(len=*), intent(in) :: tag
     character(len=*), intent(in) :: fname
-    integer, intent(in)          :: filesize
+    integer,          intent(in) :: filesize
     logical,          intent(in) :: chkflag
     character(len=*), intent(in) :: timestring
 
-    integer :: nlen(1)
-    !integer :: nlen(1), filesize
+    integer :: fsize
     !----------------------------------------------------------------------------
 
-    inquire(file=fname, exist=existflag)
-    !inquire(file=fname, exist=existflag, size=filesize)
+    inquire(file=fname, exist=existflag, size=fsize)
     if (existflag) then
-      nlen(1) = get_unlimited_len(fname)
       write(msgString,'(A)')tag//'  '//fname//' exists '//timestring
-      if (nlen(1) > 0) then
-        print '(A,L,i14)',trim(msgString)//' complete, chkflag ',chkflag,filesize
+      if (chkflag) then
+        print '(A,L,2i14)',trim(msgString)//' not complete, chkflag ',chkflag,filesize,fsize
       else
-        print '(A,L,i14)',trim(msgString)//' still  0, chkflag ',chkflag,filesize
+        print '(A,L,2i14)',trim(msgString)//'     complete, chkflag ',chkflag,filesize,fsize
       end if
     end if
   end subroutine debug_info
