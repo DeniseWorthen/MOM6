@@ -305,10 +305,10 @@ contains
           fname = trim(olog(n)%filename)
           inquire(file=fname, size=olog(n)%filesize)
 
-          if (debug .and. is_root_pe()) then
-             print '(A,L,i8)',trim(subname)//' fname '//trim(olog(n)%filename)//'  '//trim(importexport) &
-                  //' checkflag ',olog(n)%chkfile_nextAdvance,olog(n)%filesize
-          end if
+          !if (debug .and. is_root_pe()) then
+          !   print '(A,L,i8)',trim(subname)//' fname '//trim(olog(n)%filename)//'  '//trim(importexport) &
+          !        //' checkflag ',olog(n)%chkfile_nextAdvance,olog(n)%filesize
+          !end if
         end if
 !2526:204: XXX ./MOM6_OUTPUT/ocn_2021_03_22_09_00.nc  2021-03-22T21:00:00  2021-03-22T22:00:00            -1
 !2585:204: XXX ./MOM6_OUTPUT/ocn_2021_03_22_09_00.nc  2021-03-22T22:00:00  2021-03-22T23:00:00            -1
@@ -316,11 +316,12 @@ contains
 !2767:204: XXX ./MOM6_OUTPUT/ocn_2021_03_22_15_00.nc  2021-03-23T00:00:00  2021-03-23T01:00:00      90532460
 !2827:204: XXX ./MOM6_OUTPUT/ocn_2021_03_22_15_00.nc  2021-03-23T01:00:00  2021-03-23T02:00:00      90532460
 
-        fname = trim(olog(n)%filename)
-        inquire(file=fname, exist=existflag, size=fsize)
-        if (debug .and. is_root_pe()) then
-          print '(A,3i12)','XXX '//trim(olog(n)%filename)//'  '//trim(importexport)//'  ',fsize
-        endif
+        ! fname = trim(olog(n)%filename)
+        ! inquire(file=fname, exist=existflag, size=olog(n)%filesize)
+        ! if (debug .and. is_root_pe()) then
+        !   print '(A,i12,A,L)','XXX '//trim(olog(n)%filename)//'  '//trim(importexport)//'  ',olog(n)%filesize, &
+        !      '  ',olog(n)%chkfile_nextAdvance
+        ! endif
         !if (debug .and. is_root_pe()) call debug_info(trim(subname)//'X  ',trim(olog(n)%filename), &
         !     olog(n)%chkfile_nextAdvance, importexport)
 
@@ -328,17 +329,24 @@ contains
           fname = trim(olog(n)%filename)
           inquire(file=fname, exist=existflag, size=fsize)
           if (existflag) then
+
             if (is_root_pe()) then
               nlen(1) = get_unlimited_len(trim(fname))
             end if
             call ESMF_VMBroadCast(vm, nlen, 1, 0, rc=rc)
             if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+            if (debug .and. is_root_pe()) then
+              if (nlen(1) > 0 .and. fsize > olog(n)%filesize) then
+                print '(A,3i12)','YYY '//trim(olog(n)%filename)//'  '//trim(importexport)//'  ',fsize,olog(n)%filesize,nlen(1)
+              endif
+            end if
+!#ifdef test
             !if (nlen(1) > 0) then
             if (nlen(1) > 0 .and. fsize > olog(n)%filesize) then
               olog(n)%chkfile_nextAdvance = .false.
               olog(n)%time_lastrestart = lastrestart
-               olog(n)%filesize = fsize
+              !olog(n)%filesize = fsize
               if (is_root_pe()) then
                 !if (toffset > 0) then
                 !  call log_restart_fh(nextTime-olog(n)%fhoffset, startTime, 'mom6.'//chour, prefixtime=.true., &
@@ -354,11 +362,18 @@ contains
                 !end if
               endif
             end if
+!#endif
           end if ! existflag
         end if
 
-        if (debug .and. is_root_pe()) call debug_info(trim(subname)//'  ',trim(olog(n)%filename), &
-             olog(n)%chkfile_nextAdvance, olog(n)%filesize, importexport)
+        !if (debug .and. is_root_pe()) then
+        !  print '(A,3i12,A,L)','YYY '//trim(olog(n)%filename)//'  '//trim(importexport)//'  ',fsize,olog(n)%filesize,nlen(1),&
+        !       '  ',olog(n)%chkfile_nextAdvance
+        !endif
+
+
+        !if (debug .and. is_root_pe()) call debug_info(trim(subname)//'  ',trim(olog(n)%filename), &
+        !     olog(n)%chkfile_nextAdvance, olog(n)%filesize, importexport)
 
         if (lstop) then
           ! use prevRing in place of currTime to allow for stopping between averaging intervals
@@ -394,8 +409,8 @@ contains
             end if
           end if
 
-          if (debug .and. is_root_pe()) call debug_info(trim(subname)//' lstop ',trim(olog(n)%filename), &
-               olog(n)%chkfile_nextAdvance, olog(n)%filesize, importexport)
+          !if (debug .and. is_root_pe()) call debug_info(trim(subname)//' lstop ',trim(olog(n)%filename), &
+          !     olog(n)%chkfile_nextAdvance, olog(n)%filesize, importexport)
 
         end if ! lstop
 
