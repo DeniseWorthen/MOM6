@@ -96,6 +96,7 @@ contains
     character(len=128)      :: alarm_name
     integer                 :: opt_n
     logical                 :: chkfile_nextAdvance
+    logical                 :: use_filesize
     character(len=1024)     :: filename
     integer                 :: filesize
     type(ESMF_Alarm)        :: alarm
@@ -217,6 +218,7 @@ contains
       olog(n)%alarm_name          = 'output_alarm'//trim(chour)
       olog(n)%opt_n               = freq(n)
       olog(n)%chkfile_nextAdvance = .false.
+      olog(n)%use_filesize        = .false.
       olog(n)%filename            = ''
       olog(n)%filesize            = 0
       olog(n)%time_lastrestart    = lastrestart
@@ -264,6 +266,7 @@ contains
     ! local variables
     type(ESMF_Time)    :: nextTime, currTime, startTime, prevRing
     logical            :: lstop
+    logical            :: filetest
     integer            :: n, nlen(1)
     integer            :: fsize
     character(len=40)  :: importexport
@@ -286,7 +289,7 @@ contains
       lstop = atStopTime
     end if
 
-    nlen(1) = 0
+    nlen(1) = nf90_fill_int
     do n = 1,n_freq
       write(chour,'(I2.2,A)')freq(n),'h'
       if (chour(1:2) == output_fh(1:2)) then
@@ -302,14 +305,25 @@ contains
           timestr = get_timestr(nextTime-olog(n)%filename_fhoffset, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
           write(olog(n)%filename,'(A)')trim(outputdir)//'ocn_'//trim(timestr)//'.nc'
-
           fname = trim(olog(n)%filename)
-          inquire(file=fname, size=olog(n)%filesize)
+          inquire(file=fname, exist=existflag, size=olog(n)%filesize)
+          if (existflag) then
+            if (is_root_pe()) then
+              nlen(1) = get_unlimited_len(trim(fname))
+            end if
+            call ESMF_VMBroadCast(vm, nlen, 1, 0, rc=rc)
+            if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-          !if (debug .and. is_root_pe()) then
-          !   print '(A,L,i8)',trim(subname)//' fname '//trim(olog(n)%filename)//'  '//trim(importexport) &
-          !        //' checkflag ',olog(n)%chkfile_nextAdvance,olog(n)%filesize
-          !end if
+            if (nlen(1) == 0) then
+              olog(n)%use_filesize = .false.
+            else
+              olog(n)%use_filesize = .true.
+            end if
+          end if
+          if (debug .and. is_root_pe()) then
+             print '(A,L,A,2i12)',trim(subname)//' fname '//trim(olog(n)%filename)//'  '//trim(importexport) &
+                  //' checkflag ',olog(n)%chkfile_nextAdvance,'  ',olog(n)%filesize,nlen(1)
+          end if
         end if
 !2526:204: XXX ./MOM6_OUTPUT/ocn_2021_03_22_09_00.nc  2021-03-22T21:00:00  2021-03-22T22:00:00            -1
 !2585:204: XXX ./MOM6_OUTPUT/ocn_2021_03_22_09_00.nc  2021-03-22T22:00:00  2021-03-22T23:00:00            -1
@@ -342,12 +356,15 @@ contains
                 print '(A,3i12)','YYY '//trim(olog(n)%filename)//'  '//trim(importexport)//'  ',fsize,olog(n)%filesize,nlen(1)
               endif
             end if
-!#ifdef test
-            !if (nlen(1) > 0) then
-            if (nlen(1) > 0 .and. fsize > olog(n)%filesize) then
+
+            if (olog(n)%use_filesize) then
+              filetest = (nlen(1) > 0 .and. fsize > olog(n)%filesize)
+            else
+              filetest = (nlen(1) > 0)
+            end if
+            if (filetest) then
               olog(n)%chkfile_nextAdvance = .false.
               olog(n)%time_lastrestart = lastrestart
-              !olog(n)%filesize = fsize
               if (is_root_pe()) then
                 !if (toffset > 0) then
                 !  call log_restart_fh(nextTime-olog(n)%fhoffset, startTime, 'mom6.'//chour, prefixtime=.true., &
@@ -363,7 +380,6 @@ contains
                 !end if
               endif
             end if
-!#endif
           end if ! existflag
         end if
 
