@@ -347,30 +347,31 @@ contains
         !     olog(n)%chkfile_nextAdvance, importexport)
 
         if (olog(n)%chkfile_nextAdvance) then
-          fname = trim(olog(n)%filename)
-          inquire(file=fname, exist=existflag)
-          if (existflag) then
+          ! fname = trim(olog(n)%filename)
+          ! inquire(file=fname, exist=existflag)
+          ! if (existflag) then
+          !   if (is_root_pe()) then
+          !     nlen(1) = get_unlimited_len(trim(fname))
+          !     inquire(file=fname, size=fsize(1))
+          !   end if
+          !   call ESMF_VMBroadCast(vm, nlen, 1, 0, rc=rc)
+          !   if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          !   call ESMF_VMBroadCast(vm, fsize, 1, 0, rc=rc)
+          !   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-            if (is_root_pe()) then
-              nlen(1) = get_unlimited_len(trim(fname))
-              inquire(file=fname, size=fsize(1))
-            end if
-            call ESMF_VMBroadCast(vm, nlen, 1, 0, rc=rc)
-            if (ChkErr(rc,__LINE__,u_FILE_u)) return
-            call ESMF_VMBroadCast(vm, fsize, 1, 0, rc=rc)
-            if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          !   if (debug .and. is_root_pe()) then
+          !     if (nlen(1) > 0 .and. fsize(1) > olog(n)%filesize) then
+          !       print '(A,3i12)','YYY '//trim(olog(n)%filename)//'  '//trim(importexport)//'  ',fsize,olog(n)%filesize,nlen(1)
+          !     endif
+          !   end if
 
-            if (debug .and. is_root_pe()) then
-              if (nlen(1) > 0 .and. fsize(1) > olog(n)%filesize) then
-                print '(A,3i16)','YYY '//trim(olog(n)%filename)//'  '//trim(importexport)//'  ',fsize,olog(n)%filesize,nlen(1)
-              endif
-            end if
-
-            if (olog(n)%use_filesize) then
-              filetest = (nlen(1) > 0 .and. fsize(1) > olog(n)%filesize)
-            else
-              filetest = (nlen(1) > 0)
-            end if
+          ! if (olog(n)%use_filesize) then
+          !   filetest = (nlen(1) > 0 .and. fsize(1) > olog(n)%filesize)
+          ! else
+          !   filetest = (nlen(1) > 0)
+          ! end if
+          filetest = file_is_complete(trim(fname), olog(n)%use_filesize, olog(n)filesize, rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
             if (filetest) then
               olog(n)%chkfile_nextAdvance = .false.
               olog(n)%time_lastrestart = lastrestart
@@ -404,19 +405,28 @@ contains
           !  print '(A)',trim(subname)//' fname at lstop '//trim(olog(n)%filename)//'  '//trim(importexport)
           !end if
 
-          fname = trim(olog(n)%filename)
-          inquire(file=fname, exist=existflag, size=fsize)
-          if (existflag) then
-            if (is_root_pe()) then
-              nlen(1) = get_unlimited_len(fname)
-            end if
-            call ESMF_VMBroadCast(vm, nlen, 1, 0, rc=rc)
+          ! fname = trim(olog(n)%filename)
+          ! inquire(file=fname, exist=existflag)
+          ! if (existflag) then
+          !   if (is_root_pe()) then
+          !     nlen(1) = get_unlimited_len(fname)
+          !     inquire(file=fname, size=fsize(1))
+          !   end if
+          !   call ESMF_VMBroadCast(vm, nlen, 1, 0, rc=rc)
+          !   if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          !   call ESMF_VMBroadCast(vm, fsize, 1, 0, rc=rc)
+          !   if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          !   if (olog(n)%use_filesize) then
+          !     filetest = (nlen(1) > 0 .and. fsize(1) > olog(n)%filesize)
+          !   else
+          !     filetest = (nlen(1) > 0)
+          !   end if
+          filetest = file_is_complete(trim(fname), olog(n)%use_filesize, olog(n)%filesize, rc)
             if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-            if (nlen(1) > 0) then
+          if (filetest) then
               olog(n)%chkfile_nextAdvance = .false.
               olog(n)%time_lastrestart = lastrestart
-              olog(n)%filesize = fsize
               if (is_root_pe()) then
                 call log_restart_fh(prevring, startTime, 'mom6.lstop.'//chour, prefixtime=.true., &
                      lastrestart=olog(n)%time_lastrestart, lastoutput=olog(n)%filename, rc=rc)
@@ -434,15 +444,52 @@ contains
     end do
   end subroutine outputlog_run
 
+  !> Determine if the netcdf output file is complete
+  !!
+  !! @param[in]   fname         filename to check
+  !! @param[in]   chk4size      logical flag for check method in use
+  !! @param[in]   createsize    the filesize at creation
+  !! @param[out]  rc            return code
+  logical function file_is_complete(fname, chk4size, createsize, rc) result(filetest)
+    character(len=*), intent(in)  :: fname
+    logical,          intent(in)  :: chk4size
+    integer,          intent(in)  :: createsize
+    integer,          intent(out) :: rc
+    integer :: nlen(1), fsize(1)
+    !----------------------------------------------------------------------------
+
+    rc = ESMF_SUCESS
+
+    nlen(1) = nf90_fill_int
+    fsize(1) = nf90_fill_int
+    inquire(file=fname, exist=existflag)
+    if (existflag) then
+      if (is_root_pe()) then
+        nlen(1) = get_unlimited_len(fname)
+        inquire(file=fname, size=fsize(1))
+      end if
+      call ESMF_VMBroadCast(vm, nlen, 1, 0, rc=rc)
+      if (ChkErr(rc,__LINE__,u_FILE_u)) return
+      call ESMF_VMBroadCast(vm, fsize, 1, 0, rc=rc)
+      if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+      if (chk4size) then
+        filetest = (nlen(1) > 0 .and. fsize(1) > createsize)
+      else
+        filetest = (nlen(1) > 0)
+      end if
+    end if
+
+  end function file_is_complete
   !> Check all restart files to determine if output has been completed
   !!
-  !! @param clock          an ESMF_Clock object
-  !! @param num_rest_files the number of restart files
-  !! @param rc             return code
+  !! @param[in]    clock            an ESMF_Clock object
+  !! @param[in]    num_rest_files   the number of restart files
+  !! @param[out]   rc               return code
   subroutine outputlog_restart(mclock, num_rest_files, rc)
-    type(ESMF_Clock)     :: mclock         !< the ESMF_clock for the model
-    integer, intent(in)  :: num_rest_files !< the number of restart files
-    integer, intent(out) :: rc             !< return code
+    type(ESMF_Clock)     :: mclock
+    integer, intent(in)  :: num_rest_files
+    integer, intent(out) :: rc
 
     ! local variables
     type(ESMF_Time)      :: startTime, currTime, nextTime
@@ -573,7 +620,7 @@ contains
     importexport = trim(import_timestr)//'  '//trim(export_timestr)
   end function get_importexport
 
-  !> Write debug info to stdout
+  !> Write debug info to stdout, only called on root pe
   !!
   !! @param[in] tag            an information tag
   !! @param[in] fname          the filename to check
@@ -592,14 +639,17 @@ contains
     integer :: fsize
     !----------------------------------------------------------------------------
 
-    inquire(file=fname, exist=existflag, size=fsize)
+    inquire(file=fname, exist=existflag)
     if (existflag) then
+      inquire(file=fname, size=fsize)
       write(msgString,'(A)')tag//'  '//fname//' exists '//timestring
       if (chkflag) then
         print '(A,L,2i16)',trim(msgString)//' not complete, chkflag ',chkflag,filesize,fsize
       else
         print '(A,L,2i16)',trim(msgString)//'     complete, chkflag ',chkflag,filesize,fsize
       end if
+    else
+      write(msgString,'(A)')tag//'  '//fname//' does not exist '//timestring
     end if
   end subroutine debug_info
 
