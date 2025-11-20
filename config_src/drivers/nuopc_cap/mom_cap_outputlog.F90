@@ -99,7 +99,7 @@ contains
     logical                 :: chkfile_nextAdvance
     logical                 :: use_filesize
     character(len=1024)     :: filename
-    integer                 :: filesize
+    integer                 :: createsize
     type(ESMF_Alarm)        :: alarm
     type(ESMF_TimeInterval) :: fhoffset
     type(ESMF_TimeInterval) :: filename_fhoffset

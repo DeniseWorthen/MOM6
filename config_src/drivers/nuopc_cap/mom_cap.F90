@@ -2094,16 +2094,6 @@ subroutine ModelSetRunClock(gcomp, rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
   if (first_time) then
-
-    if (first_time) then
-      call ESMF_TimeGet(dcurrtime, timeString=dtimestring, rc=rc)
-      if (ChkErr(rc,__LINE__,u_FILE_u)) return
-      if (is_root_pe()) print *,'XXX init '//trim(dtimestring)
-
-      call ESMF_TimeGet(mcurrtime, timeString=mtimestring, rc=rc)
-      if (ChkErr(rc,__LINE__,u_FILE_u)) return
-      if (is_root_pe()) print *,'XXX init '//trim(mtimestring)
-    end if
     !--------------------------------
     ! set restart alarm
     !--------------------------------
