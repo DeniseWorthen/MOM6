@@ -221,7 +221,7 @@ contains
       olog(n)%chkfile_nextAdvance = .false.
       olog(n)%use_filesize        = .false.
       olog(n)%filename            = ''
-      olog(n)%filesize            = 0
+      olog(n)%createsize            = 0
       olog(n)%time_lastrestart    = lastrestart
       olog(n)%fhoffset            = 60*freq(n)*tincrement
       olog(n)%filename_fhoffset   = 90*freq(n)*tincrement
@@ -320,7 +320,7 @@ contains
             if (ChkErr(rc,__LINE__,u_FILE_u)) return
             call ESMF_VMBroadCast(vm, fsize, 1, 0, rc=rc)
             if (ChkErr(rc,__LINE__,u_FILE_u)) return
-            olog(n)%filesize = fsize(1)
+            olog(n)%createsize = fsize(1)
 
             if (nlen(1) == 0) then
               olog(n)%use_filesize = .false.
@@ -329,15 +329,15 @@ contains
             end if
           end if
           if (debug .and. is_root_pe()) then
-             print '(A,2(A,L),A,2i16)',trim(subname)//' fname '//trim(olog(n)%filename)//'  '//trim(importexport), &
-                  ' checkflag ',olog(n)%chkfile_nextAdvance,' use_filesize ',olog(n)%use_filesize,                 &
-                  '  ',olog(n)%filesize,nlen(1)
+            print '(A,2(A,L),A,2i16)',trim(subname)//' fname '//trim(olog(n)%filename)//'  '//trim(importexport), &
+                 ' checkflag ',olog(n)%chkfile_nextAdvance,' use_filesize ',olog(n)%use_filesize,                 &
+                 '  ',olog(n)%createsize,nlen(1)
           end if
         end if
 
         if (olog(n)%chkfile_nextAdvance) then
           fname = trim(olog(n)%filename)
-          filetest = file_is_complete(fname, olog(n)%use_filesize, olog(n)%filesize, rc)
+          filetest = file_is_complete(fname, olog(n)%use_filesize, olog(n)%createsize, rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
           if (filetest) then
@@ -351,7 +351,7 @@ contains
           end if
         end if
         if (debug .and. is_root_pe()) call debug_info(trim(subname)//'  ',trim(olog(n)%filename), &
-             olog(n)%chkfile_nextAdvance, olog(n)%filesize, importexport)
+             olog(n)%chkfile_nextAdvance, olog(n)%createsize, importexport)
 
         if (lstop) then
           ! use prevRing in place of currTime to allow for stopping between averaging intervals
@@ -364,7 +364,7 @@ contains
           write(olog(n)%filename,'(A)')trim(outputdir)//'ocn_'//trim(timestr)//'.nc'
 
           fname = trim(olog(n)%filename)
-          filetest = file_is_complete(fname, olog(n)%use_filesize, olog(n)%filesize, rc)
+          filetest = file_is_complete(fname, olog(n)%use_filesize, olog(n)%createsize, rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
           if (filetest) then
@@ -377,7 +377,7 @@ contains
             end if
           end if
           if (debug .and. is_root_pe()) call debug_info(trim(subname)//' lstop ',trim(olog(n)%filename), &
-               olog(n)%chkfile_nextAdvance, olog(n)%filesize, importexport)
+               olog(n)%chkfile_nextAdvance, olog(n)%createsize, importexport)
 
         end if ! lstop
       end if ! chour = output_fh
@@ -536,6 +536,7 @@ contains
 
     integer :: year, month, day, hour, minute
     !----------------------------------------------------------------------------
+
     rc = ESMF_SUCCESS
 
     call ESMF_TimeGet(MyTime, yy=year, mm=month, dd=day, h=hour, m=minute, rc=rc)
@@ -556,6 +557,7 @@ contains
 
     character(len=19) :: import_timestr, export_timestr
     !----------------------------------------------------------------------------
+
     rc = ESMF_SUCCESS
 
     call ESMF_TimeGet(currTime, timestring=import_timestr, rc=rc)
