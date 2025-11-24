@@ -603,7 +603,7 @@ contains
       end if
     else
       write(msgString,'(A)')tag//'  '//fname//' does not exist '//timestring
-      print '(A)')trim(msgString)
+      print '(A)',trim(msgString)
     end if
   end subroutine debug_info
 
