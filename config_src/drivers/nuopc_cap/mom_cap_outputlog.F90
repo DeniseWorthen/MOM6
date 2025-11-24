@@ -52,8 +52,8 @@ contains
   ! the allowable output frequency for MOM6 history, in hours only
   integer, parameter :: n_freq  = 3
   integer, parameter, dimension(n_freq) :: freq = (/3, 6, 24/)
-  ! TODO: check multiple output freq for same run, reqs different  known filename
-  ! root for different freqs
+  ! TODO: for multiple output freq in same run, a different known filename
+  ! root for different freqs needs to be read in, consistent with the diag table
 
   ! the tincrement interval (defined in minutes) is used to construct the output filename
   ! the file name must be set as the mid-point of the averaging period via the diagtable
@@ -85,9 +85,13 @@ contains
   ! a different log file name is required for the final log file, otherwise the next-to-final
   ! log is overwritten
   !
-  ! TODO: explain why filesize is also a criteria
-  ! an output file is declared closed when the unlimited dimension in the file is > 0
-  ! each closed output file is recorded in a logfile named with the associated forecast hour.
+  ! Depending on configuration, the output file can have an unlimited dimension >0 at creation time.
+  ! This necessitates checking for an additional criteria using the filesize at creation. An output file
+  ! is declared complete either when the unlimited dimension in the file is > 0 or when the unlimited
+  ! dimension is >0 and the filesize is larger than the initial size.
+
+  ! When a file is determined to be complete, a log file is recorded containing the forecast hour, the valid
+  ! time, the name of the output file and the last completed restart file.
 
   type(ESMF_VM)           :: vm
   type(ESMF_TimeInterval) :: tincrement
@@ -253,7 +257,7 @@ contains
     end do
   end subroutine outputlog_init
 
-  !> Use Alarms at the output frequency to determine if output has been completed
+  !> Write a log file denoting that an output file is complete
   !!
   !! @param clock        an ESMF_Clock object
   !! @param atStopTime   when present, checks for final output file
@@ -267,7 +271,7 @@ contains
     ! local variables
     type(ESMF_Time)    :: nextTime, currTime, startTime, prevRing
     logical            :: lstop
-    logical            :: filetest
+    logical            :: filecomplete
     integer            :: n, nlen(1), fsize(1)
     character(len=40)  :: importexport
     character(len=16)  :: timestr
@@ -289,7 +293,7 @@ contains
       lstop = atStopTime
     end if
 
-    filetest = .false.
+    filecomplete = .false.
     fsize(1) = nf90_fill_int
     nlen(1)  = nf90_fill_int
 
@@ -337,10 +341,10 @@ contains
 
         if (olog(n)%chkfile_nextAdvance) then
           fname = trim(olog(n)%filename)
-          filetest = file_is_complete(fname, olog(n)%use_filesize, olog(n)%createsize, rc)
+          filecomplete = file_is_complete(fname, olog(n)%use_filesize, olog(n)%createsize, rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-          if (filetest) then
+          if (filecomplete) then
             olog(n)%chkfile_nextAdvance = .false.
             olog(n)%time_lastrestart = lastrestart
             if (is_root_pe()) then
@@ -364,10 +368,10 @@ contains
           write(olog(n)%filename,'(A)')trim(outputdir)//'ocn_'//trim(timestr)//'.nc'
 
           fname = trim(olog(n)%filename)
-          filetest = file_is_complete(fname, olog(n)%use_filesize, olog(n)%createsize, rc)
+          filecomplete = file_is_complete(fname, olog(n)%use_filesize, olog(n)%createsize, rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-          if (filetest) then
+          if (filecomplete) then
             olog(n)%chkfile_nextAdvance = .false.
             olog(n)%time_lastrestart = lastrestart
             if (is_root_pe()) then
@@ -471,7 +475,8 @@ contains
   !! @param[in]   chk4size      logical flag for check method in use
   !! @param[in]   createsize    the filesize at creation
   !! @param[out]  rc            return code
-  logical function file_is_complete(fname, chk4size, createsize, rc) result(filetest)
+  !! @return                    logical flag, true if the file is complete
+  logical function file_is_complete(fname, chk4size, createsize, rc) result(filecomplete)
 
     character(len=*), intent(in)  :: fname
     logical,          intent(in)  :: chk4size
@@ -483,7 +488,7 @@ contains
 
     rc = ESMF_SUCCESS
 
-    filetest = .false.
+    filecomplete = .false.
     nlen(1) = nf90_fill_int
     fsize(1) = nf90_fill_int
 
@@ -500,9 +505,9 @@ contains
     end if
 
     if (chk4size) then
-      filetest = (nlen(1) > 0 .and. fsize(1) > createsize)
+      filecomplete = (nlen(1) > 0 .and. fsize(1) > createsize)
     else
-      filetest = (nlen(1) > 0)
+      filecomplete = (nlen(1) > 0)
     end if
   end function file_is_complete
 
@@ -569,12 +574,12 @@ contains
 
   !> Write debug info to stdout, only called on root pe
   !!
-  !! @param[in] tag            an information tag
-  !! @param[in] fname          the filename to check
-  !! @param[in] filesize       the filesize at creation time
-  !! @param[in] chkflag        logical flag for checking next Advance
-  !! @param[in] timestring     a timestring
-  !! @param [out]rc            return code
+  !! @param[in]    tag            an information tag
+  !! @param[in]    fname          the filename to check
+  !! @param[in]    filesize       the filesize at creation time
+  !! @param[in]    chkflag        logical flag for checking next Advance
+  !! @param[in]    timestring     a timestring
+  !! @param [out]  rc             return code
   subroutine debug_info(tag,fname,chkflag,filesize,timestring)
 
     character(len=*), intent(in) :: tag
