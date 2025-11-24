@@ -1,8 +1,8 @@
 !> This module contains a set of subroutines that check if MOM restart and history files
 !! have been written and closed. This file is specific to UWM operational requirements
-!! and configurations (eg specific output frequencys in hours) and may break if used outside
+!! and configurations (eg specific output frequencies in hours) and may break if used outside
 !! the scope of intended use.
-!! This module a stub when CESMCOUPLED is defined
+!! This module is a stub when CESMCOUPLED is defined
 module MOM_cap_outputlog
 
 #ifdef CESMCOUPLED
@@ -87,7 +87,7 @@ contains
   !
   ! Depending on configuration, the output file can have an unlimited dimension >0 at creation time.
   ! This necessitates checking for an additional criteria using the filesize at creation. An output file
-  ! is declared complete either when the unlimited dimension in the file is > 0 or when the unlimited
+  ! is declared complete either when the unlimited dimension in the file is >0 or when the unlimited
   ! dimension is >0 and the filesize is larger than the initial size.
 
   ! When a file is determined to be complete, a log file is recorded containing the forecast hour, the valid
@@ -98,11 +98,11 @@ contains
   type(ESMF_Time)         :: lastrestart
 
   type :: outputlog_type
-    character(len=128)      :: alarm_name
+    character(len=14)       :: alarm_name
     integer                 :: opt_n
     logical                 :: chkfile_nextAdvance
     logical                 :: use_filesize
-    character(len=1024)     :: filename
+    character(len=256)      :: filename
     integer                 :: createsize
     type(ESMF_Alarm)        :: alarm
     type(ESMF_TimeInterval) :: fhoffset
@@ -118,8 +118,6 @@ contains
   character(len=256) :: restartdir
   character(len=256) :: outputdir
   character(len=2)   :: output_fh
-  character(len=3)   :: chour
-  character(len=512) :: msgString
   character(len=*), parameter :: u_FILE_u = &
        __FILE__
 
@@ -141,6 +139,8 @@ contains
     logical                 :: isPresent, isSet
     integer                 :: n
     integer                 :: year, month, day, hour
+    character(len=3)        :: chour
+    character(len=256)      :: msgString
     character(len=256)      :: value
     character(len=256)      :: subname='MOM_cap:(outputlog_init)'
     !----------------------------------------------------------------------------
@@ -207,7 +207,7 @@ contains
     ! get start hour time offset (ie, fhrot)
     call ESMF_TimeGet(mcurrTime, yy=year, mm=month, dd=day, h=hour, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    if (mod(hour,6) .ne. 0) then
+    if (mod(hour,6) /= 0) then
       toffset = hour - 6
     else
       toffset = 0
@@ -273,9 +273,10 @@ contains
     logical            :: lstop
     logical            :: filecomplete
     integer            :: n, nlen(1), fsize(1)
+    character(len=3)   :: chour
     character(len=40)  :: importexport
     character(len=16)  :: timestr
-    character(len=512) :: fname
+    character(len=256) :: fname
     character(len=256) :: subname='MOM_cap:(outputlog_run)'
     !----------------------------------------------------------------------------
 
@@ -402,7 +403,7 @@ contains
     type(ESMF_Time)      :: startTime, currTime, nextTime
     integer              :: n, nlen(1)
     integer              :: year, month, day, hour, minute, seconds
-    character(len=512)   :: fname
+    character(len=256)   :: fname
     character(len=15)    :: timestr
     character(len=40)    :: importexport
     logical, allocatable :: allDone(:)
@@ -579,7 +580,6 @@ contains
   !! @param[in]    filesize       the filesize at creation time
   !! @param[in]    chkflag        logical flag for checking next Advance
   !! @param[in]    timestring     a timestring
-  !! @param [out]  rc             return code
   subroutine debug_info(tag,fname,chkflag,filesize,timestring)
 
     character(len=*), intent(in) :: tag
@@ -589,6 +589,7 @@ contains
     character(len=*), intent(in) :: timestring
 
     integer :: fsize
+    character(len=256) :: msgString
     !----------------------------------------------------------------------------
 
     inquire(file=fname, exist=existflag)
@@ -602,6 +603,7 @@ contains
       end if
     else
       write(msgString,'(A)')tag//'  '//fname//' does not exist '//timestring
+      print '(A)')trim(msgString)
     end if
   end subroutine debug_info
 
