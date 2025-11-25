@@ -619,8 +619,8 @@ contains
 
     if (ierr /= nf90_noerr) then
       write(0, '(A)') 'FATAL ERROR: ' // trim(string)// ' : ' // trim(nf90_strerror(ierr))
-      ! This fails on WCOSS2 with Intel 19 compiler. See
-      ! https://community.intel.com/t5/Intel-Fortran-Compiler/STOP-and-ERROR-STOP-with-variable-stop-codes/m-p/1182521#M149254
+      ! This fails on WCOSS2 with Intel 19 compiler. See https://community.intel.com/
+      ! Search term "STOP and ERROR STOP with variable stop codes"
       ! When WCOSS2 moves to Intel 2020+, uncomment the next line and remove stop 99
       !stop ierr
       stop 99
