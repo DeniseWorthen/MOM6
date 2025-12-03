@@ -1939,6 +1939,7 @@ subroutine ModelAdvance(gcomp, rc)
     call is_restart_fh(clock, restartfh_info, write_restartfh)
     if (write_restartfh) write_restart = .true.
 #endif
+    if (mype == 0) call ufs_trace("mom", "WriteRestart", "B")
 
     if (write_restart .or. write_restart_eor) then
       ! determine restart filename
@@ -2011,6 +2012,7 @@ subroutine ModelAdvance(gcomp, rc)
         write(stdout,*) subname//' writing restart file ',trim(restartname)
       endif
     endif
+    if (mype == 0) call ufs_trace("mom", "WriteRestart", "E")
   endif ! restart_mode
 
   !---------------
