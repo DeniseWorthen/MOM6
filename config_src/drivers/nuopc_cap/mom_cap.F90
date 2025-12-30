@@ -1775,10 +1775,23 @@ subroutine ModelAdvance(gcomp, rc)
   real(8)                                :: MPI_Wtime, timers
   logical                                :: write_restart, write_restartfh
   logical                                :: write_restart_eor
-
+  !debug
+  type(ESMF_Time)  :: nextTime
+  integer          :: yr, mon, day  ! year, month, day
+  character(len=1) :: chour
+  integer          :: next_tod      ! model sec into model date
   rc = ESMF_SUCCESS
 
-  if (mype == 0) call ufs_trace_wrapper("mom", "ModelAdvance", "B")
+  call NUOPC_ModelGet(gcomp, modelClock=clock, rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  call ESMF_ClockGetNextTime(clock, nextTime, rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  call ESMF_TimeGet(nextTime, yy=yr, mm=mon, dd=day, s=next_tod, rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+  chour = ''
+  if (mod(next_tod,3600) == 0)chour = '0'
+  if (mype == 0) call ufs_trace_wrapper("mom", "ModelAdvance"//trim(chour), "B")
 
   if(profile_memory) call ESMF_VMLogMemInfo("Entering MOM Model_ADVANCE: ")
   if(write_runtimelog) then
@@ -2062,7 +2075,7 @@ subroutine ModelAdvance(gcomp, rc)
 
   if(profile_memory) call ESMF_VMLogMemInfo("Leaving MOM Model_ADVANCE: ")
 
-  if (mype == 0) call ufs_trace_wrapper("mom", "ModelAdvance", "E")
+  if (mype == 0) call ufs_trace_wrapper("mom", "ModelAdvance"//trim(chour), "E")
 
 end subroutine ModelAdvance
 
