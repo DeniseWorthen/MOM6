@@ -53,7 +53,7 @@ use ESMF,  only: ESMF_GEOMTYPE_MESH, ESMF_GEOMTYPE_GRID, ESMF_SUCCESS
 use ESMF,  only: ESMF_METHOD_INITIALIZE, ESMF_MethodRemove, ESMF_State
 use ESMF,  only: ESMF_LOGMSG_INFO, ESMF_RC_ARG_BAD, ESMF_VM, ESMF_Time
 use ESMF,  only: ESMF_TimeInterval, ESMF_MAXSTR, ESMF_VMGetCurrent
-use ESMF,  only: ESMF_VMGet, ESMF_TimeGet, ESMF_TimeIntervalGet, ESMF_MeshGet
+use ESMF,  only: ESMF_VMGet, ESMF_TimeGet, ESMF_TimeIntervalGet, ESMF_MeshGet, ESMF_MeshSet
 use ESMF,  only: ESMF_MethodExecute, ESMF_Mesh, ESMF_DeLayout, ESMF_Distgrid
 use ESMF,  only: ESMF_DistGridConnection, ESMF_StateItem_Flag, ESMF_KIND_I4
 use ESMF,  only: ESMF_KIND_I8, ESMF_FAILURE, ESMF_DistGridCreate, ESMF_MeshCreate
@@ -74,7 +74,7 @@ use ESMF,  only: ESMF_AlarmCreate, ESMF_ClockGetAlarmList, ESMF_AlarmList_Flag
 use ESMF,  only: ESMF_AlarmGet, ESMF_AlarmIsCreated, ESMF_ALARMLIST_ALL, ESMF_AlarmIsEnabled
 use ESMF,  only: ESMF_STATEITEM_NOTFOUND, ESMF_FieldWrite
 use ESMF,  only: ESMF_END_ABORT, ESMF_Finalize
-use ESMF,  only: ESMF_REDUCE_MAX, ESMF_REDUCE_MIN, ESMF_VMAllReduce
+use ESMF,  only: ESMF_REDUCE_MAX, ESMF_REDUCE_MIN, ESMF_VMAllReduce, ESMF_VMAllFullReduce
 use ESMF,  only: operator(==), operator(/=), operator(+), operator(-)
 
 ! TODO ESMF_GridCompGetInternalState does not have an explicit Fortran interface.
@@ -984,6 +984,7 @@ subroutine InitializeRealize(gcomp, importState, exportState, clock, rc)
   character(len=512)                         :: err_msg ! error messages
   integer                                    :: spatialDim
   integer                                    :: numOwnedElements
+  integer                                    :: maskmin
   type(ESMF_Array)                           :: elemMaskArray
   real(ESMF_KIND_R8)    , pointer            :: ownedElemCoords(:)
   real(ESMF_KIND_R8)    , pointer            :: lat(:), latMesh(:)
@@ -1236,8 +1237,20 @@ subroutine InitializeRealize(gcomp, importState, exportState, clock, rc)
         mask(n) = ocean_grid%mask2dT(ig,jg)
         lon(n)  = ocean_grid%geolonT(ig,jg)
         lat(n)  = ocean_grid%geolatT(ig,jg)
+        !if(mask(n) /= maskMesh(n))print '(A,5i8,3g14.7)','XXXX ',n,i,j,mask(n),maskMesh(n),lon(n),lat(n),ocean_grid%bathyT(ig,jg)
       end do
     end do
+
+    ! find the minimum value of maskMesh across all PEs
+    call ESMF_VMAllFullReduce(vm, sendData=maskMesh, recvData=maskmin, count=numOwnedElements, &
+         reduceflag=ESMF_REDUCE_MIN, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    if (maskmin == 1) then
+      ! replace mesh mask with internal mask
+      maskMesh(:) = mask(:)
+      call ESMF_MeshSet(mesh=EMesh, elementMask=maskMesh, rc=rc)
+      if (chkerr(rc,__LINE__,u_FILE_u)) return
+    end if
 
     eps_omesh = get_eps_omesh(ocean_state)
     do n = 1,lsize
