@@ -900,6 +900,10 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
   call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_v"       , "will provide")
   call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_dhdx"    , "will provide")
   call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_dhdy"    , "will provide")
+  if (grid_ice == 'C') then
+    call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_uC"    , "will provide")
+    call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_vC"    , "will provide")
+  end if
   call fld_list_add(fldsFrOcn_num, fldsFrOcn, "Fioo_q"     , "will provide")
   call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_bldepth" , "will provide")
   if (cesm_coupled .and. use_MARBL) then

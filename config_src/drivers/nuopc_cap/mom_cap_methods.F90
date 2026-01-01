@@ -685,6 +685,14 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
 
   deallocate(ocz, ocm, ocz_rot, ocm_rot)
 
+  if (grid_ice == 'C') then
+     call State_SetExport(exportState, 'So_uC', isc, iec, jsc, jec, ocean_public%u_surfC(i,j), ocean_grid, rc=rc)
+     if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+     call State_SetExport(exportState, 'So_vC', isc, iec, jsc, jec, ocean_public%v_surfC(i,j), ocean_grid, rc=rc)
+     if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  end if
+
   ! -------
   ! Boundary layer depth
   ! -------
@@ -813,23 +821,42 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
     enddo
   enddo
 
-  ! rotate slopes from tripolar grid back to lat/lon grid,  x,y => latlon (CCW)
-  ! "ocean_grid" uses has halos and uses local indexing.
+  if (grid_ice == 'C') then
+    worka(:,:) = 0.0; workb(:,:) = 0.0
+    do jglob = jsc, jec
+      j = jglob + ocean_grid%jsc - jsc
+      do iglob = isc,iec
+        i = iglob + ocean_grid%isc - isc
+        worka(i,j) = 0.5*(dhdx(i+1,j) + dhdx(i,j))
+        workb(i,j) = 0.5*(dhdy(i,j+1) + dhdy(i,j))
+      end do
+    end do
+    dhdx = worka; dhdy = workb
 
-  do j = jsc, jec
-    jg = j + ocean_grid%jsc - jsc
-    do i = isc, iec
-      ig = i + ocean_grid%isc - isc
-      dhdx_rot(i,j) = ocean_grid%cos_rot(ig,jg)*dhdx(i,j) + ocean_grid%sin_rot(ig,jg)*dhdy(i,j)
-      dhdy_rot(i,j) = ocean_grid%cos_rot(ig,jg)*dhdy(i,j) - ocean_grid%sin_rot(ig,jg)*dhdx(i,j)
+    call State_SetExport(exportState, 'So_dhdx', isc, iec, jsc, jec, dhdx, ocean_grid, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    call State_SetExport(exportState, 'So_dhdy', isc, iec, jsc, jec, dhdy, ocean_grid, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  else
+     ! rotate slopes from tripolar grid back to lat/lon grid,  x,y => latlon (CCW)
+     ! "ocean_grid" uses has halos and uses local indexing.
+
+    do j = jsc, jec
+      jg = j + ocean_grid%jsc - jsc
+      do i = isc, iec
+        ig = i + ocean_grid%isc - isc
+        dhdx_rot(i,j) = ocean_grid%cos_rot(ig,jg)*dhdx(i,j) + ocean_grid%sin_rot(ig,jg)*dhdy(i,j)
+        dhdy_rot(i,j) = ocean_grid%cos_rot(ig,jg)*dhdy(i,j) - ocean_grid%sin_rot(ig,jg)*dhdx(i,j)
+      enddo
     enddo
-  enddo
 
-  call State_SetExport(exportState, 'So_dhdx', isc, iec, jsc, jec, dhdx_rot, ocean_grid, rc=rc)
-  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    call State_SetExport(exportState, 'So_dhdx', isc, iec, jsc, jec, dhdx_rot, ocean_grid, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-  call State_SetExport(exportState, 'So_dhdy', isc, iec, jsc, jec, dhdy_rot, ocean_grid, rc=rc)
-  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    call State_SetExport(exportState, 'So_dhdy', isc, iec, jsc, jec, dhdy_rot, ocean_grid, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  end if
 
   ! -------
   ! CO2 Flux
