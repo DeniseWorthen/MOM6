@@ -1777,7 +1777,7 @@ subroutine ModelAdvance(gcomp, rc)
   logical                                :: write_restart_eor
   !debug
   type(ESMF_Time)  :: nextTime
-  integer          :: yr, mon, day  ! year, month, day
+  integer          :: yr, mon       ! year, month
   character(len=1) :: chour
   integer          :: next_tod      ! model sec into model date
   rc = ESMF_SUCCESS
@@ -1792,6 +1792,7 @@ subroutine ModelAdvance(gcomp, rc)
   chour = ''
   if (mod(next_tod,3600) == 0)chour = '0'
   if (mype == 0) call ufs_trace_wrapper("mom", "ModelAdvance"//trim(chour), "B")
+  !if (mype == 0) print '(A,4i8,A)','XXX ',yr,mon,day,next_tod,'  '//chour
 
   if(profile_memory) call ESMF_VMLogMemInfo("Entering MOM Model_ADVANCE: ")
   if(write_runtimelog) then
