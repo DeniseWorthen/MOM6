@@ -120,8 +120,8 @@ type, public ::  ocean_public_type
     area => NULL(),    &  !< cell area of the ocean surface, in m2.
     OBLD => NULL(),    &  !< Ocean boundary layer depth, in m.
     fco2_ocn => NULL(),&  !< Ocean CO2 flux, in kg CO2/m^2/s
-    u_surfC => NULL(), & !< i-velocity at the locations on Cu, m/s.
-    v_surfC => NULL()  & !< j-velocity at the locations on Cv, m/s.
+    uc_surf => NULL(), & !< i-velocity at the locations on Cu, m/s.
+    vc_surf => NULL()  & !< j-velocity at the locations on Cv, m/s.
   type(coupler_2d_bc_type) :: fields    !< A structure that may contain named
                                         !! arrays of tracer-related surface fields.
   integer                  :: avg_kount !< A count of contributions to running
@@ -877,8 +877,8 @@ subroutine initialize_ocean_public_type(input_domain, Ocean_sfc, diag, maskmap, 
            source=0.0)
 
   if (grid_ice == 'C') then
-     allocate(Ocean_sfc%u_surfC(isc:iec,jsc:jec),  &  ! time averaged u-current (m/sec) when CICE dynamics are on C-grid
-              Ocean_sfc%v_surfC(isc:iec,jsc:jec)      ! time averaged v-current (m/sec) when CICE dynamics are on C-grid
+     allocate(Ocean_sfc%uc_surf(isc:iec,jsc:jec),  &  ! time averaged u-current (m/sec) when CICE dynamics are on C-grid
+              Ocean_sfc%vc_surf(isc:iec,jsc:jec)      ! time averaged v-current (m/sec) when CICE dynamics are on C-grid
   end if
 
   Ocean_sfc%axes    = diag%axesT1%handles !diag axes to be used by coupler tracer flux diagnostics
@@ -1008,10 +1008,10 @@ subroutine convert_state_to_ocean_type(sfc_state, Ocean_sfc, G, US, patm, press_
       "Ocean_sfc%stagger has the unrecognized value of "//trim(val_str))
   endif
 
-  if (allocated(Ocean_sfc%u_surfC) .and. allocated(Ocean_sfc%v_surfC))then
+  if (allocated(Ocean_sfc%uc_surf) .and. allocated(Ocean_sfc%vc_surf))then
      do j=jsc_bnd,jec_bnd ; do i=isc_bnd,iec_bnd
-        Ocean_sfc%u_surfC(i,j) = G%mask2dCu(I+i0,j+j0) * US%L_T_to_m_s * sfc_state%u(I+i0,j+j0)
-        Ocean_sfc%v_surfC(i,j) = G%mask2dCv(i+i0,J+j0) * US%L_T_to_m_s * sfc_state%v(i+i0,J+j0)
+        Ocean_sfc%uc_surf(i,j) = G%mask2dCu(I+i0,j+j0) * US%L_T_to_m_s * sfc_state%u(I+i0,j+j0)
+        Ocean_sfc%vc_surf(i,j) = G%mask2dCv(i+i0,J+j0) * US%L_T_to_m_s * sfc_state%v(i+i0,J+j0)
      enddo; enddo
   end if
 

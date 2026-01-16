@@ -686,10 +686,10 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
   deallocate(ocz, ocm, ocz_rot, ocm_rot)
 
   if (grid_ice == 'C') then
-     call State_SetExport(exportState, 'So_uC', isc, iec, jsc, jec, ocean_public%u_surfC(i,j), ocean_grid, rc=rc)
+     call State_SetExport(exportState, 'So_uc', isc, iec, jsc, jec, ocean_public%uc_surf(i,j), ocean_grid, rc=rc)
      if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-     call State_SetExport(exportState, 'So_vC', isc, iec, jsc, jec, ocean_public%v_surfC(i,j), ocean_grid, rc=rc)
+     call State_SetExport(exportState, 'So_vc', isc, iec, jsc, jec, ocean_public%vc_surf(i,j), ocean_grid, rc=rc)
      if (ChkErr(rc,__LINE__,u_FILE_u)) return
   end if
 
