@@ -658,6 +658,17 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
   ! zonal and meridional currents
   ! -------
 
+  ! ocean_public contains only a single u_surf,v_surf; adding not possible (I think)
+  ! so need to set ocean surface stagger=C for grid_ice=C; u_surf and v_surf will then
+  ! be Cu,Cv; then locally calculate A-grid values for So_u and So_v since we still need them
+  if (grid_ice == 'C') then
+     call State_SetExport(exportState, 'So_uc', isc, iec, jsc, jec, ocean_public%u_surf(i,j), ocean_grid, rc=rc)
+     if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+     call State_SetExport(exportState, 'So_vc', isc, iec, jsc, jec, ocean_public%v_surf(i,j), ocean_grid, rc=rc)
+     if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  end if
+
   ! rotate ocn current from tripolar grid back to lat/lon grid x,y => latlon (CCW)
   ! "ocean_grid" has halos and uses local indexing.
 
@@ -666,6 +677,7 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
   allocate(ocz_rot(isc:iec, jsc:jec))
   allocate(ocm_rot(isc:iec, jsc:jec))
 
+  ! ocz and ocm will need to be defined in terms of average of Cu,Cv velocities
   do j = jsc, jec
     jg = j + ocean_grid%jsc - jsc
     do i = isc, iec
@@ -684,14 +696,6 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
   deallocate(ocz, ocm, ocz_rot, ocm_rot)
-
-  if (grid_ice == 'C') then
-     call State_SetExport(exportState, 'So_uc', isc, iec, jsc, jec, ocean_public%uc_surf(i,j), ocean_grid, rc=rc)
-     if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-     call State_SetExport(exportState, 'So_vc', isc, iec, jsc, jec, ocean_public%vc_surf(i,j), ocean_grid, rc=rc)
-     if (ChkErr(rc,__LINE__,u_FILE_u)) return
-  end if
 
   ! -------
   ! Boundary layer depth
