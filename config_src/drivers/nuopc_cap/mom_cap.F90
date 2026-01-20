@@ -166,6 +166,9 @@ character(len=16) :: inst_suffix = ''
 logical           :: pointer_date = .true. ! append date to rpointer
 real(8) :: timere
 
+! debug
+character(len=12) :: grid_ice
+
 contains
 
 !> NUOPC SetService method is the only public entry point.
@@ -481,6 +484,8 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
   logical                                :: i2o_per_cat
   logical                                :: found=.false.       ! rpointer inquiry
   real(8)                                :: MPI_Wtime, timeiads
+  !debug
+  character(len=12) :: stagger
 !--------------------------------
 
   rc = ESMF_SUCCESS
@@ -593,6 +598,18 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
   else
     call set_calendar_type (JULIAN)
   endif
+
+  ! Determine stagger location of surface velocities from OCN to ICE
+  call NUOPC_CompAttributeGet(gcomp, name='grid_ice', value=cvalue, isPresent=isPresent, isSet=isSet, rc=rc)
+  if (chkerr(rc,__LINE__,u_FILE_u)) return
+  if (.not. isPresent .and. .not. isSet) then
+     cvalue = 'A'
+  else if (trim(cvalue) /= 'C') then
+     grid_ice = trim(cvalue)
+  else
+     call ESMF_LogWrite('grid_ice must be either A or C ', ESMF_LOGMSG_INFO)
+     call ESMF_Finalize(endflag=ESMF_END_ABORT)
+   end if
 
   ! this ocean connector will be driven at set interval
   DT = set_time (DT_OCEAN, 0)
@@ -800,6 +817,20 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
               source=0.0)
     endif
   endif
+   ! call get_param(param_file, mdl, "OCEAN_SURFACE_STAGGER", stagger, &
+   !               "A case-insensitive character string to indicate the "//&
+   !               "staggering of the surface velocity field that is "//&
+   !               "returned to the coupler.  Valid values include "//&
+   !               "'A', 'B', or 'C'.", default="C")
+   ! if (trim(grid_ice) == 'C' .and. ocean_public%stagger /= 'C')then
+   !   call ESMF_LogWrite('grid_ice and ocean_surfac_stagger must both be C ', ESMF_LOGMSG_INFO)
+   !   call ESMF_Finalize(endflag=ESMF_END_ABORT)
+   ! end if
+   ! if (trim(grid_ice) == 'A' .and. ocean_public%stagger /= 'A')then
+   !   call ESMF_LogWrite('grid_ice and ocean_surfac_stagger must both be A ', ESMF_LOGMSG_INFO)
+   !   call ESMF_Finalize(endflag=ESMF_END_ABORT)
+   ! end if
+
 
   if (use_waves) then
     if (wave_method == "EFACTOR") then
@@ -911,8 +942,8 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
   call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_dhdx"    , "will provide")
   call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_dhdy"    , "will provide")
   if (grid_ice == 'C') then
-    call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_uC"    , "will provide")
-    call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_vC"    , "will provide")
+    call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_uc"    , "will provide")
+    call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_vc"    , "will provide")
   end if
   call fld_list_add(fldsFrOcn_num, fldsFrOcn, "Fioo_q"     , "will provide")
   call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_bldepth" , "will provide")
@@ -1898,7 +1929,7 @@ subroutine ModelAdvance(gcomp, rc)
     ! Export Data
     !---------------
 
-    call mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock, rc=rc)
+    call mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock, grid_ice, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     if (dbug > 0) then

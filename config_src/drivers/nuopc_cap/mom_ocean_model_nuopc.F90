@@ -119,7 +119,7 @@ type, public ::  ocean_public_type
     melt_potential => NULL(), & !< Instantaneous heat used to melt sea ice (in J/m^2)
     area => NULL(),    &  !< cell area of the ocean surface, in m2.
     OBLD => NULL(),    &  !< Ocean boundary layer depth, in m.
-    fco2_ocn => NULL() &  !< Ocean CO2 flux, in kg CO2/m^2/s
+    fco2_ocn => NULL()    !< Ocean CO2 flux, in kg CO2/m^2/s
 !    uc_surf => NULL(), & !< i-velocity at the locations on Cu, m/s.
 !    vc_surf => NULL()    !< j-velocity at the locations on Cv, m/s.
   type(coupler_2d_bc_type) :: fields    !< A structure that may contain named

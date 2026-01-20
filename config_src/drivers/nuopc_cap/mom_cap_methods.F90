@@ -572,12 +572,13 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
 end subroutine mom_import
 
 !> Maps outgoing ocean data to ESMF State
-subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock, rc)
+subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock, grid_ice, rc)
   type(ocean_public_type) , intent(in)    :: ocean_public !< Ocean surface state
   type(ocean_grid_type)   , intent(in)    :: ocean_grid   !< Ocean model grid
   type(ocean_state_type)  , pointer       :: ocean_state  !< Ocean state
   type(ESMF_State)        , intent(inout) :: exportState  !< outgoing data
   type(ESMF_Clock)        , intent(in)    :: clock        !< ESMF clock
+  character(len=*)        , intent(in), optional :: grid_ice
   integer                 , intent(inout) :: rc           !< Return code
 
   ! Local variables
@@ -662,10 +663,10 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
   ! so need to set ocean surface stagger=C for grid_ice=C; u_surf and v_surf will then
   ! be Cu,Cv; then locally calculate A-grid values for So_u and So_v since we still need them
   if (grid_ice == 'C') then
-     call State_SetExport(exportState, 'So_uc', isc, iec, jsc, jec, ocean_public%u_surf(i,j), ocean_grid, rc=rc)
+     call State_SetExport(exportState, 'So_uc', isc, iec, jsc, jec, ocean_public%u_surf, ocean_grid, rc=rc)
      if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-     call State_SetExport(exportState, 'So_vc', isc, iec, jsc, jec, ocean_public%v_surf(i,j), ocean_grid, rc=rc)
+     call State_SetExport(exportState, 'So_vc', isc, iec, jsc, jec, ocean_public%v_surf, ocean_grid, rc=rc)
      if (ChkErr(rc,__LINE__,u_FILE_u)) return
   end if
 
@@ -682,8 +683,10 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
     jg = j + ocean_grid%jsc - jsc
     do i = isc, iec
       ig = i + ocean_grid%isc - isc
-      ocz(i,j) = ocean_public%u_surf(i,j)
-      ocm(i,j) = ocean_public%v_surf(i,j)
+      !ocz(i,j) = ocean_public%u_surf(i,j)
+      !ocm(i,j) = ocean_public%v_surf(i,j)
+      ocz(i,j) = 0.0
+      ocm(i,j) = 0.0
       ocz_rot(i,j) = ocean_grid%cos_rot(ig,jg)*ocz(i,j) + ocean_grid%sin_rot(ig,jg)*ocm(i,j)
       ocm_rot(i,j) = ocean_grid%cos_rot(ig,jg)*ocm(i,j) - ocean_grid%sin_rot(ig,jg)*ocz(i,j)
     enddo
@@ -752,7 +755,7 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
            source=0.0_ESMF_KIND_R8)
   allocate(dhdx_rot(isc:iec, jsc:jec)) !global indices without halos
   allocate(dhdy_rot(isc:iec, jsc:jec)) !global indices without halos
-
+#ifdef test
   ! Make a copy of ssh in order to do a halo update (ssh has local indexing with halos)
   do j = ocean_grid%jsc, ocean_grid%jec
     jloc = j + ocean_grid%jdg_offset
@@ -861,6 +864,14 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
     call State_SetExport(exportState, 'So_dhdy', isc, iec, jsc, jec, dhdy_rot, ocean_grid, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
   end if
+#endif
+  dhdx_rot = 0.0
+  dhdy_rot = 0.0
+  call State_SetExport(exportState, 'So_dhdx', isc, iec, jsc, jec, dhdx_rot, ocean_grid, rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+  call State_SetExport(exportState, 'So_dhdy', isc, iec, jsc, jec, dhdy_rot, ocean_grid, rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
   ! -------
   ! CO2 Flux
