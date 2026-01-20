@@ -624,12 +624,13 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
   if (chkerr(rc,__LINE__,u_FILE_u)) return
   if (.not. isPresent .and. .not. isSet) then
      cvalue = 'A'
-  else if (trim(cvalue) /= 'C') then
-     grid_ice = trim(cvalue)
   else
-     call ESMF_LogWrite('grid_ice must be either A or C ', ESMF_LOGMSG_INFO)
-     call ESMF_Finalize(endflag=ESMF_END_ABORT)
-   end if
+     grid_ice = trim(cvalue)
+  endif
+  !if (trim(grid_ice) /= 'A' .or. trim(grid_ice) /= 'C') then
+  !   call ESMF_LogWrite('grid_ice must be either A or C ', ESMF_LOGMSG_INFO)
+  !   call ESMF_Finalize(endflag=ESMF_END_ABORT)
+  !end if
 
   ! this ocean connector will be driven at set interval
   DT = set_time (DT_OCEAN, 0)
