@@ -935,6 +935,8 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
   if (cesm_coupled .and. use_MARBL) then
     call fld_list_add(fldsFrOcn_num, fldsFrOcn, "Faoo_fco2_ocn", "will provide")
   endif
+  call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_uc"      , "will provide")
+  call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_vc"      , "will provide")
 
   do n = 1,fldsToOcn_num
     call NUOPC_Advertise(importState, standardName=fldsToOcn(n)%stdname, name=fldsToOcn(n)%shortname, rc=rc)
