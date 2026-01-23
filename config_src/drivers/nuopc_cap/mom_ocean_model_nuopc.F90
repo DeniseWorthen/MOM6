@@ -63,6 +63,8 @@ use MOM_surface_forcing_nuopc, only : ice_ocean_boundary_type, surface_forcing_C
 use MOM_surface_forcing_nuopc, only : forcing_save_restart
 use get_stochy_pattern_mod,  only : write_stoch_restart_ocn
 use iso_fortran_env,           only : int64
+!debug
+use mom_ufs_trace_wrapper_mod, only: ufs_trace_init_wrapper, ufs_trace_wrapper
 
 #include <MOM_memory.h>
 
@@ -781,6 +783,7 @@ end subroutine ocean_model_restart
 !> ocean_model_end terminates the model run, saving the ocean state in a restart
 !! and deallocating any data associated with the ocean.
 subroutine ocean_model_end(Ocean_sfc, Ocean_state, Time, write_restart)
+
   type(ocean_public_type), intent(inout) :: Ocean_sfc   !< An ocean_public_type structure that is
                                                         !! to be deallocated upon termination.
   type(ocean_state_type),  pointer       :: Ocean_state !< A pointer to the structure containing
@@ -789,9 +792,22 @@ subroutine ocean_model_end(Ocean_sfc, Ocean_state, Time, write_restart)
   type(time_type),         intent(in)    :: Time        !< The model time, used for writing restarts.
   logical,                 intent(in)    :: write_restart !< true => write restart file
 
+  logical :: root    ! True only on the root PE
+
+  root = is_root_pe()
+
+  if (root) call ufs_trace_wrapper("mom", "save_restart", "B")
   if (write_restart) call ocean_model_save_restart(Ocean_state, Time)
+  if (root) call ufs_trace_wrapper("mom", "save_restart", "E")
+
+  if (root) call ufs_trace_wrapper("mom", "diag_mediator_end", "B")
   call diag_mediator_end(Time, Ocean_state%diag, end_diag_manager=.true.)
+  if (root) call ufs_trace_wrapper("mom", "diag_mediator_end", "E")
+
+  if (root) call ufs_trace_wrapper("mom", "mom_end", "B")
   call MOM_end(Ocean_state%MOM_CSp)
+  if (root) call ufs_trace_wrapper("mom", "mom_end", "E")
+
   if (Ocean_state%use_ice_shelf) call ice_shelf_end(Ocean_state%Ice_shelf_CSp)
 end subroutine ocean_model_end
 

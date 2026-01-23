@@ -747,6 +747,8 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
 
   endif
 
+  if (mype == 0) call ufs_trace_wrapper("mom", "OceanModelInit", "B")
+
   ocean_public%is_ocean_pe = .true.
   if (cesm_coupled .and. len_trim(inst_suffix)>0) then
     call ocean_model_init(ocean_public, ocean_state, time0, time_start, &
@@ -754,6 +756,7 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
   else
     call ocean_model_init(ocean_public, ocean_state, time0, time_start, input_restart_file=trim(adjustl(restartfiles)))
   endif
+  if (mype == 0) call ufs_trace_wrapper("mom", "OceanModelInit", "E")
 
   ! GMM, this call is not needed in CESM. Check with EMC if it can be deleted.
   call ocean_model_flux_init(ocean_state)
@@ -1990,6 +1993,7 @@ subroutine ModelAdvance(gcomp, rc)
 #endif
 
     if (write_restart .or. write_restart_eor) then
+      if (mype == 0) call ufs_trace_wrapper("mom", "ModelAdvanceWriteRestart", "B")
       ! determine restart filename
       call ESMF_ClockGetNextTime(clock, MyTime, rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -2062,6 +2066,7 @@ subroutine ModelAdvance(gcomp, rc)
         write(stdout,*) subname//' writing restart file ',trim(restartname)
       endif
     endif
+    if (mype == 0) call ufs_trace_wrapper("mom", "ModelAdvanceWriteRestart", "E")
   endif ! restart_mode
 
   call outputlog_run(clock, rc=rc)
@@ -2338,12 +2343,16 @@ subroutine ocean_model_finalize(gcomp, rc)
     write_restart = .false.
   endif
   if (write_restart) call ESMF_LogWrite("No Restart Alarm, writing restart at Finalize ", &
-                          ESMF_LOGMSG_INFO)
+       ESMF_LOGMSG_INFO)
 
+  if (mype == 0) call ufs_trace_wrapper("mom", "ocean_model_end", "B")
   call ocean_model_end(ocean_public, ocean_State, Time, write_restart=write_restart)
+  if (mype == 0) call ufs_trace_wrapper("mom", "ocean_model_end", "E")
 
+  if (mype == 0) call ufs_trace_wrapper("mom", "infra_end", "B")
   call io_infra_end()
   call MOM_infra_end()
+  if (mype == 0) call ufs_trace_wrapper("mom", "infra_end", "E")
 
   ! need to call twice to force logging of last output file
   call outputlog_run(clock, rc=rc)
