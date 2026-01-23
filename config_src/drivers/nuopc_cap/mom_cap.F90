@@ -1807,7 +1807,6 @@ subroutine ModelAdvance(gcomp, rc)
   chour = ''
   if (mod(next_tod,3600) == 0)chour = '0'
   if (mype == 0) call ufs_trace_wrapper("mom", "ModelAdvance"//trim(chour), "B")
-  !if (mype == 0) print '(A,4i8,A)','XXX ',yr,mon,day,next_tod,'  '//chour
 
   if(profile_memory) call ESMF_VMLogMemInfo("Entering MOM Model_ADVANCE: ")
   if(write_runtimelog) then
