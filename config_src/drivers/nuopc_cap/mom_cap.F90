@@ -1793,22 +1793,11 @@ subroutine ModelAdvance(gcomp, rc)
   real(8)                                :: MPI_Wtime, timers
   logical                                :: write_restart, write_restartfh
   logical                                :: write_restart_eor
-  !debug
-  type(ESMF_Time)  :: nextTime
-  integer          :: yr, mon       ! year, month
-  character(len=1) :: chour
-  integer          :: next_tod      ! model sec into model date
+
   rc = ESMF_SUCCESS
-
-  call NUOPC_ModelGet(gcomp, modelClock=clock, rc=rc)
-  if (ChkErr(rc,__LINE__,u_FILE_u)) return
-  call ESMF_ClockGetNextTime(clock, nextTime, rc=rc)
-  if (ChkErr(rc,__LINE__,u_FILE_u)) return
-  call ESMF_TimeGet(nextTime, yy=yr, mm=mon, dd=day, s=next_tod, rc=rc)
+  chour = get_chour(gcomp, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-  chour = ''
-  if (mod(next_tod,3600) == 0)chour = '0'
   if (mype == 0) call ufs_trace_wrapper("mom", "ModelAdvance"//trim(chour), "B")
 
   if(profile_memory) call ESMF_VMLogMemInfo("Entering MOM Model_ADVANCE: ")
@@ -2597,6 +2586,38 @@ subroutine shr_log_setLogUnit(nunit)
   ! having cppdefs in the main program
 end subroutine shr_log_setLogUnit
 #endif
+
+!> Set a string on hour intervals
+!!
+!! @param   gcomp  an ESMF_GridComp object
+!! @param   rc     return code
+!! @return  chour  character value
+function get_chour(gcomp, rc) result(chour)
+  type(ESMF_GridComp), intent(in) :: gcomp !< ESMF_GridComp object
+  integer, intent(out)            :: rc    !< return code
+  character(len=1)                :: chour !< output character
+
+  ! local variables
+  type(ESMF_Clock) :: mclock
+  type(ESMF_Time)  :: mcurrTime
+  integer          :: year,month,day,tod
+  character(len=*), parameter :: subname='(MOM_cap:get_chour)'
+
+  rc = ESMF_SUCCESS
+
+  call NUOPC_ModelGet(gcomp, modelClock=mclock, rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+  call ESMF_ClockGet(mclock, currTime=mcurrTime, rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+  call ESMF_TimeGet(mcurrTime, yy=year, mm=month, dd=day, s=tod, rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+  chour = ''
+  if (mod(tod, 3600) == 0) chour = '0'
+
+end function get_chour
 
 !>
 !! @page nuopc_cap NUOPC Cap
