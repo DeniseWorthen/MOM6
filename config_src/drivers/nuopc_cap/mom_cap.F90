@@ -2619,9 +2619,9 @@ function get_chour(gcomp, rc) result(chour)
   chour = ''
   if (mod(tod, 3600) == 0) chour = '0'
 
-  if (is_root_pe()) then
-    print '(A,4i6)','XXX MOM ',year,month,day,tod
-  endif
+  !if (is_root_pe()) then
+  !  print '(A,4i6)','XXX MOM ',year,month,day,tod
+  !endif
 end function get_chour
 
 !>
