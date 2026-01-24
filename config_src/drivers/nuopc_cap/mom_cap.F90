@@ -1793,8 +1793,10 @@ subroutine ModelAdvance(gcomp, rc)
   real(8)                                :: MPI_Wtime, timers
   logical                                :: write_restart, write_restartfh
   logical                                :: write_restart_eor
+  character(len=1)                       :: chour
 
   rc = ESMF_SUCCESS
+
   chour = get_chour(gcomp, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -2617,6 +2619,9 @@ function get_chour(gcomp, rc) result(chour)
   chour = ''
   if (mod(tod, 3600) == 0) chour = '0'
 
+  if (is_root_pe()) then
+    print '(A,4i6)','XXX MOM ',year,month,day,tod
+  endif
 end function get_chour
 
 !>
