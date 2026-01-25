@@ -585,6 +585,7 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
   integer                         :: isc, iec, jsc, jec   ! indices
   integer                         :: iloc, jloc           ! indices
   integer                         :: iglob, jglob         ! indices
+  integer                         :: i0, j0               ! indices
   integer                         :: n
   integer                         :: icount
   real                            :: slp_L, slp_R, slp_C
@@ -601,11 +602,9 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
   real(ESMF_KIND_R8), allocatable :: ssh(:,:)
   real(ESMF_KIND_R8), allocatable :: dhdx(:,:), dhdy(:,:)
   real(ESMF_KIND_R8), allocatable :: dhdx_rot(:,:), dhdy_rot(:,:)
-  character(len=*)  , parameter   :: subname = '(mom_export)'
-  !debug
-  integer :: i0,j0
   real(ESMF_KIND_R8), allocatable :: uc(:,:)
   real(ESMF_KIND_R8), allocatable :: vc(:,:)
+  character(len=*)  , parameter   :: subname = '(mom_export)'
 
   rc = ESMF_SUCCESS
 
@@ -662,38 +661,46 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
   ! zonal and meridional currents
   ! -------
 
-  ! if (ocean_state_stagger == 'C') ....
-  call State_SetExport(exportState, 'So_uc', isc, iec, jsc, jec, ocean_public%u_surf, ocean_grid, rc=rc)
-  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  allocate(ocz(isc:iec, jsc:jec))
+  allocate(ocm(isc:iec, jsc:jec))
 
-  call State_SetExport(exportState, 'So_vc', isc, iec, jsc, jec, ocean_public%v_surf, ocean_grid, rc=rc)
-  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  if (ocean_state_stagger == 'C') then
+    call State_SetExport(exportState, 'So_uc', isc, iec, jsc, jec, ocean_public%u_surf, ocean_grid, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-  ! Allocate local copy of C-grid velocities with halos to calculate A-grid exports
-  allocate(uc(ocean_grid%isd:ocean_grid%ied, ocean_grid%jsd:ocean_grid%jed), source=0.0_ESMF_KIND_R8)
-  allocate(vc(ocean_grid%isd:ocean_grid%ied, ocean_grid%jsd:ocean_grid%jed), source=0.0_ESMF_KIND_R8)
-  !print *,'XXXuc',lbound(uc,1),ubound(uc,1),lbound(uc,2),ubound(uc,2)
-  !print *,'XXXvc',lbound(vc,1),ubound(vc,1),lbound(vc,2),ubound(vc,2)
+    call State_SetExport(exportState, 'So_vc', isc, iec, jsc, jec, ocean_public%v_surf, ocean_grid, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-  ! Copy data and fill halos
-  uc(ocean_grid%isc:ocean_grid%iec, ocean_grid%jsc:ocean_grid%jec) = ocean_public%u_surf(isc:iec, jsc:jec)
-  vc(ocean_grid%isc:ocean_grid%iec, ocean_grid%jsc:ocean_grid%jec) = ocean_public%v_surf(isc:iec, jsc:jec)
-  call pass_var(uc, ocean_grid%Domain)
-  call pass_var(vc, ocean_grid%Domain)
+    ! Local copy of C-grid velocities with halos to calculate A-grid exports
+    allocate(uc(ocean_grid%isd:ocean_grid%ied, ocean_grid%jsd:ocean_grid%jed), source=0.0_ESMF_KIND_R8)
+    allocate(vc(ocean_grid%isd:ocean_grid%ied, ocean_grid%jsd:ocean_grid%jed), source=0.0_ESMF_KIND_R8)
+
+    uc(ocean_grid%isc:ocean_grid%iec, ocean_grid%jsc:ocean_grid%jec) = ocean_public%u_surf(isc:iec, jsc:jec)
+    vc(ocean_grid%isc:ocean_grid%iec, ocean_grid%jsc:ocean_grid%jec) = ocean_public%v_surf(isc:iec, jsc:jec)
+    call pass_var(uc, ocean_grid%Domain)
+    call pass_var(vc, ocean_grid%Domain)
+
+    i0 = ocean_grid%isc-isc
+    j0 = ocean_grid%jsc-jsc
+    do j=jsc,jec ; do i=isc,iec
+      ocz(i,j) = ocean_grid%mask2dT(i+i0,j+j0) * 0.5*(uc(i+i0,j+j0) + uc(i+i0-1,j+j0))
+      ocm(i,j) = ocean_grid%mask2dT(i+i0,j+j0) * 0.5*(vc(i+i0,j+j0) + vc(i+i0,j+j0-1))
+    enddo; enddo
+  else
+    do j = jsc, jec
+      jg = j + ocean_grid%jsc - jsc
+      do i = isc, iec
+        ig = i + ocean_grid%isc - isc
+        ocz(i,j) = ocean_public%u_surf(i,j)
+        ocm(i,j) = ocean_public%v_surf(i,j)
+      enddo
+    enddo
+  endif
 
   ! rotate ocn current from tripolar grid back to lat/lon grid x,y => latlon (CCW)
   ! "ocean_grid" has halos and uses local indexing.
-  allocate(ocz(isc:iec, jsc:jec))
-  allocate(ocm(isc:iec, jsc:jec))
   allocate(ocz_rot(isc:iec, jsc:jec))
   allocate(ocm_rot(isc:iec, jsc:jec))
-
-  i0 = ocean_grid%isc-isc
-  j0 = ocean_grid%jsc-jsc
-  do j=jsc,jec ; do i=isc,iec
-     ocz(i,j) = ocean_grid%mask2dT(i+i0,j+j0) * 0.5*(uc(i+i0,j+j0) + uc(i+i0-1,j+j0))
-     ocm(i,j) = ocean_grid%mask2dT(i+i0,j+j0) * 0.5*(vc(i+i0,j+j0) + vc(i+i0,j+j0-1))
-   enddo; enddo
 
   do j = jsc, jec
     jg = j + ocean_grid%jsc - jsc
