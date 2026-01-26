@@ -21,6 +21,8 @@ use MOM_surface_forcing_nuopc, only: ice_ocean_boundary_type
 use MOM_grid,                  only: ocean_grid_type
 use MOM_domains,               only: pass_var
 use mpp_domains_mod,           only: mpp_get_compute_domain
+!debug
+use mpp_domains_mod,           only: mpp_get_data_domain
 
 ! By default make data private
 implicit none; private
@@ -572,13 +574,16 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
 end subroutine mom_import
 
 !> Maps outgoing ocean data to ESMF State
-subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock, rc)
+subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock, exportCgrid, rc)
+
   type(ocean_public_type) , intent(in)    :: ocean_public !< Ocean surface state
   type(ocean_grid_type)   , intent(in)    :: ocean_grid   !< Ocean model grid
   type(ocean_state_type)  , pointer       :: ocean_state  !< Ocean state
   type(ESMF_State)        , intent(inout) :: exportState  !< outgoing data
   type(ESMF_Clock)        , intent(in)    :: clock        !< ESMF clock
   integer                 , intent(inout) :: rc           !< Return code
+  !debug
+  logical, intent(in) :: exportCgrid
 
   ! Local variables
   integer                         :: i, j, ig, jg         ! indices
@@ -626,6 +631,17 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
   !----------------
 
   call mpp_get_compute_domain(ocean_public%domain, isc, iec, jsc, jec)
+  !call mpp_get_data_domain(ocean_public%domain, isd, ied, jsd, jed)
+  print *,'XXXX0 ',isc,iec, jsc, jec
+  !print *,'XXXX1 ',isd,ied, jsd, jed
+  ! 'd' arrays are == to 'c' arrays when retrieved from ocean_public
+  ! both are global; do not contain halos
+
+  print *,'XXX1 ',ocean_grid%idg_offset,ocean_grid%jdg_offset
+
+  print *,'YYYY0 ',ocean_grid%isc,ocean_grid%iec,ocean_grid%jsc,ocean_grid%jec
+  print *,'YYYY1 ',ocean_grid%isd,ocean_grid%ied,ocean_grid%jsd,ocean_grid%jed
+  ! ocean_grid 'c' arrays are local indices with halos
 
   ! -------
   ! ocean mask
@@ -660,7 +676,10 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
   ! -------
   ! zonal and meridional currents
   ! -------
+  allocate(ocz(isc:iec, jsc:jec))
+  allocate(ocm(isc:iec, jsc:jec))
 
+<<<<<<< HEAD
   allocate(ocz(isc:iec, jsc:jec))
   allocate(ocm(isc:iec, jsc:jec))
 
@@ -675,6 +694,19 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
     allocate(uc(ocean_grid%isd:ocean_grid%ied, ocean_grid%jsd:ocean_grid%jed), source=0.0_ESMF_KIND_R8)
     allocate(vc(ocean_grid%isd:ocean_grid%ied, ocean_grid%jsd:ocean_grid%jed), source=0.0_ESMF_KIND_R8)
 
+=======
+  if (exportCgrid) then
+    call State_SetExport(exportState, 'So_uc', isc, iec, jsc, jec, ocean_public%u_surf, ocean_grid, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    call State_SetExport(exportState, 'So_vc', isc, iec, jsc, jec, ocean_public%v_surf, ocean_grid, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    ! Local copy of C-grid velocities with halos to calculate A-grid velocities
+    allocate(uc(ocean_grid%isd:ocean_grid%ied, ocean_grid%jsd:ocean_grid%jed), source=0.0_ESMF_KIND_R8)
+    allocate(vc(ocean_grid%isd:ocean_grid%ied, ocean_grid%jsd:ocean_grid%jed), source=0.0_ESMF_KIND_R8)
+
+>>>>>>> 60ebeb044 (messy slope fixes)
     uc(ocean_grid%isc:ocean_grid%iec, ocean_grid%jsc:ocean_grid%jec) = ocean_public%u_surf(isc:iec, jsc:jec)
     vc(ocean_grid%isc:ocean_grid%iec, ocean_grid%jsc:ocean_grid%jec) = ocean_public%v_surf(isc:iec, jsc:jec)
     call pass_var(uc, ocean_grid%Domain)
@@ -770,9 +802,17 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
   ! Sea-surface zonal and meridional slopes
   !----------------
 
-  allocate(ssh(ocean_grid%isd:ocean_grid%ied,ocean_grid%jsd:ocean_grid%jed), & ! local indices with halos
-           dhdx(isc:iec, jsc:jec),                                           & !global indices without halos
-           dhdy(isc:iec, jsc:jec),                                           & !global indices without halos
+  ! allocate(ssh(ocean_grid%isd:ocean_grid%ied,ocean_grid%jsd:ocean_grid%jed), & ! local indices with halos
+  !          dhdx(isc:iec, jsc:jec),                                           & !global indices without halos
+  !          dhdy(isc:iec, jsc:jec),                                           & !global indices without halos
+  !          source=0.0_ESMF_KIND_R8)
+
+  !print *,'XXXX1 ',ocean_grid%isd,ocean_grid%ied,ocean_grid%jsd,ocean_grid%jed
+  !print *,'XXXX2 ',ocean_grid%isd_global,ocean_grid%jsd_global
+
+  allocate(ssh(ocean_grid%isd:ocean_grid%ied,ocean_grid%jsd:ocean_grid%jed),  & ! local indices with halos
+           dhdx(ocean_grid%isd:ocean_grid%ied,ocean_grid%jsd:ocean_grid%jed), & !global indices with halos
+           dhdy(ocean_grid%isd:ocean_grid%ied,ocean_grid%jsd:ocean_grid%jed), & !global indices with halos
            source=0.0_ESMF_KIND_R8)
   allocate(dhdx_rot(isc:iec, jsc:jec)) !global indices without halos
   allocate(dhdy_rot(isc:iec, jsc:jec)) !global indices without halos
@@ -785,6 +825,7 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
       ssh(i,j) = ocean_public%sea_lev(iloc,jloc)
     enddo
   enddo
+  !print *,'YYY0 ssh ',lbound(ssh,1),ubound(ssh,1),lbound(ssh,2),ubound(ssh,2)
 
   ! Update halo of ssh so we can calculate gradients (local indexing)
   call pass_var(ssh, ocean_grid%domain)
@@ -814,8 +855,10 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
         ! larger extreme values.
         slope = 0.0
       endif
-      dhdx(iglob,jglob) = slope * ocean_grid%US%m_to_L*ocean_grid%IdxT(i,j) * ocean_grid%mask2dT(i,j)
-      if (ocean_grid%mask2dT(i,j)==0.) dhdx(iglob,jglob) = 0.0
+      !dhdx(iglob,jglob) = slope * ocean_grid%US%m_to_L*ocean_grid%IdxT(i,j) * ocean_grid%mask2dT(i,j)
+      !if (ocean_grid%mask2dT(i,j)==0.) dhdx(iglob,jglob) = 0.0
+      dhdx(i,j) = slope * ocean_grid%US%m_to_L*ocean_grid%IdxT(i,j) * ocean_grid%mask2dT(i,j)
+      if (ocean_grid%mask2dT(i,j)==0.) dhdx(i,j) = 0.0
     enddo
   enddo
 
@@ -844,29 +887,53 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
         ! larger extreme values.
         slope = 0.0
       endif
-      dhdy(iglob,jglob) = slope * ocean_grid%US%m_to_L*ocean_grid%IdyT(i,j) * ocean_grid%mask2dT(i,j)
-      if (ocean_grid%mask2dT(i,j)==0.) dhdy(iglob,jglob) = 0.0
+      !dhdy(iglob,jglob) = slope * ocean_grid%US%m_to_L*ocean_grid%IdyT(i,j) * ocean_grid%mask2dT(i,j)
+      !if (ocean_grid%mask2dT(i,j)==0.) dhdy(iglob,jglob) = 0.0
+      dhdy(i,j) = slope * ocean_grid%US%m_to_L*ocean_grid%IdyT(i,j) * ocean_grid%mask2dT(i,j)
+      if (ocean_grid%mask2dT(i,j)==0.) dhdy(i,j) = 0.0
     enddo
   enddo
+  ! Update halo of slopes so we can calculate gradients on C-grid
+  call pass_var(dhdx, ocean_grid%domain)
+  call pass_var(dhdy, ocean_grid%domain)
 
-  ! rotate slopes from tripolar grid back to lat/lon grid,  x,y => latlon (CCW)
-  ! "ocean_grid" uses has halos and uses local indexing.
+  ! if (exportCgrid) then
+  !   allocate(workx, source = dhdx)
+  !   allocate(worky, source = dhdy)
+  !   workx = 0.0
+  !   worky = 0.0
+    ! i0 = ocean_grid%isc-isc
+    ! j0 = ocean_grid%jsc-jsc
+    ! do j=jsc,jec ; do i=isc,iec
+    !   workx(i,j) =  0.5*(dhdx(i+i0,j+j0) + dhdx(i+i0+1,j+j0))
+    !   worky(i,j) =  0.5*(dhdy(i+i0,j+j0) + dhdy(i+i0,j+j0+1))
+    ! enddo; enddo
 
-  do j = jsc, jec
-    jg = j + ocean_grid%jsc - jsc
-    do i = isc, iec
-      ig = i + ocean_grid%isc - isc
-      dhdx_rot(i,j) = ocean_grid%cos_rot(ig,jg)*dhdx(i,j) + ocean_grid%sin_rot(ig,jg)*dhdy(i,j)
-      dhdy_rot(i,j) = ocean_grid%cos_rot(ig,jg)*dhdy(i,j) - ocean_grid%sin_rot(ig,jg)*dhdx(i,j)
+  !   call State_SetExport(exportState, 'So_dhdx', isc, iec, jsc, jec, dhdx, ocean_grid, rc=rc)
+  !   if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+  !   call State_SetExport(exportState, 'So_dhdy', isc, iec, jsc, jec, dhdy, ocean_grid, rc=rc)
+  !   if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  ! else
+    ! rotate slopes from tripolar grid back to lat/lon grid,  x,y => latlon (CCW)
+    ! "ocean_grid" uses has halos and uses local indexing.
+    do j = jsc, jec
+      jg = j + ocean_grid%jsc - jsc
+      do i = isc, iec
+        ig = i + ocean_grid%isc - isc
+        dhdx_rot(i,j) = ocean_grid%cos_rot(ig,jg)*dhdx(ig,jg) + ocean_grid%sin_rot(ig,jg)*dhdy(ig,jg)
+        dhdy_rot(i,j) = ocean_grid%cos_rot(ig,jg)*dhdy(ig,jg) - ocean_grid%sin_rot(ig,jg)*dhdx(ig,jg)
+      enddo
     enddo
-  enddo
+    !dhdx_rot = 0.0
+    !dhdy_rot = 0.0
 
-  call State_SetExport(exportState, 'So_dhdx', isc, iec, jsc, jec, dhdx_rot, ocean_grid, rc=rc)
-  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    call State_SetExport(exportState, 'So_dhdx', isc, iec, jsc, jec, dhdx_rot, ocean_grid, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-  call State_SetExport(exportState, 'So_dhdy', isc, iec, jsc, jec, dhdy_rot, ocean_grid, rc=rc)
-  if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
+    call State_SetExport(exportState, 'So_dhdy', isc, iec, jsc, jec, dhdy_rot, ocean_grid, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  !endif
   ! -------
   ! CO2 Flux
   ! -------

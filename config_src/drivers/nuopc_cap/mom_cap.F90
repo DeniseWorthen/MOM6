@@ -109,13 +109,13 @@ type ocean_internalstate_type
   type(ocean_public_type),       pointer :: ocean_public_type_ptr
   type(ocean_state_type),        pointer :: ocean_state_type_ptr
   type(ice_ocean_boundary_type), pointer :: ice_ocean_boundary_type_ptr
-end type
+end type ocean_internalstate_type
 
 !>  Wrapper-derived type required to associate an internal state instance
 !! with the ESMF/NUOPC component
 type ocean_internalstate_wrapper
   type(ocean_internalstate_type), pointer :: ptr
-end type
+end type ocean_internalstate_wrapper
 
 !> Contains field information
 type fld_list_type
@@ -167,6 +167,9 @@ character(len=16) :: inst_suffix = ''
 logical           :: pointer_date = .true. ! append date to rpointer
 real(8) :: timere
 integer :: mype = -1
+
+! debug
+logical :: exportCgrid = .false.
 
 contains
 
@@ -272,6 +275,12 @@ subroutine InitializeP0(gcomp, importState, exportState, clock, rc)
   call NUOPC_CompFilterPhaseMap(gcomp, ESMF_METHOD_INITIALIZE, &
        acceptStringList=(/"IPDv03p"/), rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+  exportCgrid = .false.
+  call NUOPC_CompAttributeGet(gcomp, name="exportCgrid", value=value, &
+       isPresent=isPresent, isSet=isSet, rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  if (isPresent .and. isSet) exportCgrid=(trim(value)=="true")
 
   write_diagnostics = .false.
   call NUOPC_CompAttributeGet(gcomp, name="DumpFields", value=value, &
@@ -1691,7 +1700,7 @@ subroutine DataInitialize(gcomp, rc)
   ocean_state        => ocean_internalstate%ptr%ocean_state_type_ptr
   call get_ocean_grid(ocean_state, ocean_grid)
 
-  call mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock, rc=rc)
+  call mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock, exportCgrid, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
   call ESMF_StateGet(exportState, itemCount=fieldCount, rc=rc)
@@ -1930,7 +1939,7 @@ subroutine ModelAdvance(gcomp, rc)
     ! Export Data
     !---------------
 
-    call mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock, rc=rc)
+    call mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock, exportCgrid, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     if (dbug > 0) then
