@@ -167,9 +167,7 @@ character(len=16) :: inst_suffix = ''
 logical           :: pointer_date = .true. ! append date to rpointer
 real(8) :: timere
 integer :: mype = -1
-
-! debug
-logical :: exportCgrid = .false.
+character(len=1)  :: ocean_surface_stagger = ''
 
 contains
 
@@ -276,11 +274,12 @@ subroutine InitializeP0(gcomp, importState, exportState, clock, rc)
        acceptStringList=(/"IPDv03p"/), rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-  exportCgrid = .false.
-  call NUOPC_CompAttributeGet(gcomp, name="exportCgrid", value=value, &
-       isPresent=isPresent, isSet=isSet, rc=rc)
-  if (ChkErr(rc,__LINE__,u_FILE_u)) return
-  if (isPresent .and. isSet) exportCgrid=(trim(value)=="true")
+  ! exportCgrid = .false.
+  ! call NUOPC_CompAttributeGet(gcomp, name="exportCgrid", value=value, &
+  !      isPresent=isPresent, isSet=isSet, rc=rc)
+  ! if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  ! if (isPresent .and. isSet) exportCgrid=(trim(value)=="true")
+  ! print *,'XXX '//trim(subname),'  ',exportCgrid
 
   write_diagnostics = .false.
   call NUOPC_CompAttributeGet(gcomp, name="DumpFields", value=value, &
@@ -758,11 +757,15 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
 
   ocean_public%is_ocean_pe = .true.
   if (cesm_coupled .and. len_trim(inst_suffix)>0) then
-    call ocean_model_init(ocean_public, ocean_state, time0, time_start, &
+    call ocean_model_init(ocean_public, ocean_state, time0, time_start, ocean_surface_stagger, &
       input_restart_file=trim(adjustl(restartfiles)), inst_index=inst_index)
   else
-    call ocean_model_init(ocean_public, ocean_state, time0, time_start, input_restart_file=trim(adjustl(restartfiles)))
+    call ocean_model_init(ocean_public, ocean_state, time0, time_start, ocean_surface_stagger, &
+      input_restart_file=trim(adjustl(restartfiles)))
   endif
+  if (ocean_surface_stagger /= 'A' .and. ocean_surface_stagger /= 'C') then
+     call MOM_error(FATAL,trim(subname)//' ocean_surface_stagger must be A or C in NUOPC cap ')
+  end if
 
   ! GMM, this call is not needed in CESM. Check with EMC if it can be deleted.
   call ocean_model_flux_init(ocean_state)
@@ -943,9 +946,13 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
   call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_bldepth" , "will provide")
   if (cesm_coupled .and. use_MARBL) then
     call fld_list_add(fldsFrOcn_num, fldsFrOcn, "Faoo_fco2_ocn", "will provide")
-  endif
-  call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_uc"      , "will provide")
-  call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_vc"      , "will provide")
+ endif
+ !if (exportCgrid) then
+    call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_uc"      , "will provide")
+    call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_vc"      , "will provide")
+    call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_dhdxC"    , "will provide")
+    call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_dhdyC"    , "will provide")
+  !end if
 
   do n = 1,fldsToOcn_num
     call NUOPC_Advertise(importState, standardName=fldsToOcn(n)%stdname, name=fldsToOcn(n)%shortname, rc=rc)
@@ -1700,7 +1707,7 @@ subroutine DataInitialize(gcomp, rc)
   ocean_state        => ocean_internalstate%ptr%ocean_state_type_ptr
   call get_ocean_grid(ocean_state, ocean_grid)
 
-  call mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock, exportCgrid, rc=rc)
+  call mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock, ocean_surface_stagger, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
   call ESMF_StateGet(exportState, itemCount=fieldCount, rc=rc)
@@ -1939,7 +1946,7 @@ subroutine ModelAdvance(gcomp, rc)
     ! Export Data
     !---------------
 
-    call mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock, exportCgrid, rc=rc)
+    call mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock, ocean_surface_stagger, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     if (dbug > 0) then
