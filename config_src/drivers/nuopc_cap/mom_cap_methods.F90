@@ -21,8 +21,6 @@ use MOM_surface_forcing_nuopc, only: ice_ocean_boundary_type
 use MOM_grid,                  only: ocean_grid_type
 use MOM_domains,               only: pass_var
 use mpp_domains_mod,           only: mpp_get_compute_domain
-!debug
-use mpp_domains_mod,           only: mpp_get_data_domain
 
 ! By default make data private
 implicit none; private
