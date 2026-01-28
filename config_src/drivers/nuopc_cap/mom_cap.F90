@@ -764,7 +764,14 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
       input_restart_file=trim(adjustl(restartfiles)))
   endif
   if (ocean_surface_stagger /= 'A' .and. ocean_surface_stagger /= 'C') then
-     call MOM_error(FATAL,trim(subname)//' ocean_surface_stagger must be A or C in NUOPC cap ')
+    call MOM_error(FATAL,'OCEAN_SURFACE_STAGGER must be A or C for NUOPC cap ')
+  end if
+  if (is_root_pe()) then
+    if (ocean_surface_stagger == 'A') write(stdout,*) 'ocean_surface_stagger is A: ', &
+         'all exports from NUOPC cap are on the A grid'
+    if (ocean_surface_stagger == 'C') write(stdout,*) 'ocean_surface_stagger is C: ',   &
+         'surface slopes and velocities will be exported on C grid; A-grid velocites ', &
+         'will also be exported from the NUOPC cap'
   end if
 
   ! GMM, this call is not needed in CESM. Check with EMC if it can be deleted.
@@ -948,11 +955,12 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
     call fld_list_add(fldsFrOcn_num, fldsFrOcn, "Faoo_fco2_ocn", "will provide")
  endif
  !if (exportCgrid) then
+ if (ocean_surface_stagger == 'C') then
     call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_uc"      , "will provide")
     call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_vc"      , "will provide")
-    call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_dhdxC"    , "will provide")
-    call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_dhdyC"    , "will provide")
-  !end if
+  !  call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_dhdxC"    , "will provide")
+  !  call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_dhdyC"    , "will provide")
+  end if
 
   do n = 1,fldsToOcn_num
     call NUOPC_Advertise(importState, standardName=fldsToOcn(n)%stdname, name=fldsToOcn(n)%shortname, rc=rc)
