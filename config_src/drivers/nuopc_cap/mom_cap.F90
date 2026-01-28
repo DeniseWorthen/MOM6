@@ -954,12 +954,9 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
   if (cesm_coupled .and. use_MARBL) then
     call fld_list_add(fldsFrOcn_num, fldsFrOcn, "Faoo_fco2_ocn", "will provide")
  endif
- !if (exportCgrid) then
  if (ocean_surface_stagger == 'C') then
     call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_uc"      , "will provide")
     call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_vc"      , "will provide")
-  !  call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_dhdxC"    , "will provide")
-  !  call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_dhdyC"    , "will provide")
   end if
 
   do n = 1,fldsToOcn_num

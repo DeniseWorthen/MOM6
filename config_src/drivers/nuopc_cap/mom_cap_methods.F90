@@ -856,7 +856,7 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
   call pass_var(dhdx, ocean_grid%domain)
   call pass_var(dhdy, ocean_grid%domain)
 
-  !if (ocean_surface_stagger == 'C') then
+  if (ocean_surface_stagger == 'C') then
     allocate(worka, source = dhdx)
     allocate(workb, source = dhdy)
     worka = 0.0
@@ -870,12 +870,12 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
       enddo
     enddo
 
-    call State_SetExport(exportState, 'So_dhdxC', isc, iec, jsc, jec, worka, ocean_grid, rc=rc)
+    call State_SetExport(exportState, 'So_dhdx', isc, iec, jsc, jec, worka, ocean_grid, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    call State_SetExport(exportState, 'So_dhdyC', isc, iec, jsc, jec, workb, ocean_grid, rc=rc)
+    call State_SetExport(exportState, 'So_dhdy', isc, iec, jsc, jec, workb, ocean_grid, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
-  !else
+  else
     !rotate slopes from tripolar grid back to lat/lon grid,  x,y => latlon (CCW)
     ! "ocean_grid" uses has halos and uses local indexing.
     do j = jsc, jec
@@ -892,7 +892,7 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
 
     call State_SetExport(exportState, 'So_dhdy', isc, iec, jsc, jec, dhdy_rot, ocean_grid, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
-  !endif
+  endif
 
   ! -------
   ! CO2 Flux
