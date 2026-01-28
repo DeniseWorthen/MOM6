@@ -543,26 +543,26 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
         do i = isc, iec
           ig = i + ocean_grid%isc - isc
           !rotate
-          if( set_missing_stks_to_zero ) then
+          if(set_missing_stks_to_zero) then
             do ib = 1, nsc
-              if( (abs(stkx(i,j,ib)-9.99E20_ESMF_KIND_R8) <= 0.01_ESMF_KIND_R8) ) then
+              if((abs(stkx(i,j,ib)-9.99E20_ESMF_KIND_R8) <= 0.01_ESMF_KIND_R8)) then
                 ice_ocean_boundary%ustkb(i,j,ib) = 0.0
                 ice_ocean_boundary%vstkb(i,j,ib) = 0.0
               else
                 ice_ocean_boundary%ustkb(i,j,ib) = ocean_grid%cos_rot(ig,jg)*stkx(i,j,ib) &
-                  - ocean_grid%sin_rot(ig,jg)*stky(i,j,ib)
+                    - ocean_grid%sin_rot(ig,jg)*stky(i,j,ib)
                 ice_ocean_boundary%vstkb(i,j,ib) = ocean_grid%cos_rot(ig,jg)*stky(i,j,ib) &
-                  + ocean_grid%sin_rot(ig,jg)*stkx(i,j,ib)
-              end if
-            end do
+                    + ocean_grid%sin_rot(ig,jg)*stkx(i,j,ib)
+              endif
+            enddo
           else
             do ib = 1, nsc
               ice_ocean_boundary%ustkb(i,j,ib) = ocean_grid%cos_rot(ig,jg)*stkx(i,j,ib) &
-                 - ocean_grid%sin_rot(ig,jg)*stky(i,j,ib)
+                  - ocean_grid%sin_rot(ig,jg)*stky(i,j,ib)
               ice_ocean_boundary%vstkb(i,j,ib) = ocean_grid%cos_rot(ig,jg)*stky(i,j,ib) &
-                 + ocean_grid%sin_rot(ig,jg)*stkx(i,j,ib)
+                  + ocean_grid%sin_rot(ig,jg)*stkx(i,j,ib)
             enddo
-          end if
+          endif
           ! apply masks
           ice_ocean_boundary%ustkb(i,j,:) = ice_ocean_boundary%ustkb(i,j,:) * ocean_grid%mask2dT(ig,jg)
           ice_ocean_boundary%vstkb(i,j,:) = ice_ocean_boundary%vstkb(i,j,:) * ocean_grid%mask2dT(ig,jg)
