@@ -587,6 +587,7 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
   integer                         :: isc, iec, jsc, jec   ! indices
   integer                         :: iloc, jloc           ! indices
   integer                         :: iglob, jglob         ! indices
+  integer                         :: i0,j0
   integer                         :: n
   integer                         :: icount
   real                            :: slp_L, slp_R, slp_C
@@ -603,13 +604,11 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
   real(ESMF_KIND_R8), allocatable :: ssh(:,:)
   real(ESMF_KIND_R8), allocatable :: dhdx(:,:), dhdy(:,:)
   real(ESMF_KIND_R8), allocatable :: dhdx_rot(:,:), dhdy_rot(:,:)
-  character(len=*)  , parameter   :: subname = '(mom_export)'
-  !debug
-  integer :: i0,j0
   real(ESMF_KIND_R8), allocatable :: uc(:,:)
   real(ESMF_KIND_R8), allocatable :: vc(:,:)
-  real(ESMF_KIND_R8), allocatable :: worka(:,:)
-  real(ESMF_KIND_R8), allocatable :: workb(:,:)
+  real(ESMF_KIND_R8), allocatable :: workx(:,:)
+  real(ESMF_KIND_R8), allocatable :: worky(:,:)
+  character(len=*)  , parameter   :: subname = '(mom_export)'
 
   rc = ESMF_SUCCESS
 
@@ -778,8 +777,6 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
            dhdx(ocean_grid%isd:ocean_grid%ied,ocean_grid%jsd:ocean_grid%jed), & !global indices with halos
            dhdy(ocean_grid%isd:ocean_grid%ied,ocean_grid%jsd:ocean_grid%jed), & !global indices with halos
            source=0.0_ESMF_KIND_R8)
-  allocate(dhdx_rot(isc:iec, jsc:jec)) !global indices without halos
-  allocate(dhdy_rot(isc:iec, jsc:jec)) !global indices without halos
 
   ! Make a copy of ssh in order to do a halo update (ssh has local indexing with halos)
   do j = ocean_grid%jsc, ocean_grid%jec
@@ -852,30 +849,35 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
       if (ocean_grid%mask2dT(i,j)==0.) dhdy(i,j) = 0.0
     enddo
   enddo
-  ! Update halo of slopes so we can calculate gradients on C-grid
+  ! Update halo of slopes to calculate gradients on C-grid
   call pass_var(dhdx, ocean_grid%domain)
   call pass_var(dhdy, ocean_grid%domain)
 
   if (ocean_surface_stagger == 'C') then
-    allocate(worka, source = dhdx)
-    allocate(workb, source = dhdy)
-    worka = 0.0
-    workb = 0.0
+    allocate(workx, mold=dhdx)
+    allocate(worky, mold=dhdy)
+    workx = 0.0
+    worky = 0.0
     do jglob = jsc, jec
       j = jglob + ocean_grid%jsc - jsc
       do iglob = isc,iec
         i = iglob + ocean_grid%isc - isc
-        worka(i,j) = 0.5*(dhdx(i,j) + dhdx(i+1,j))*ocean_grid%mask2dCu(i,j)
-        workb(i,j) = 0.5*(dhdy(i,j) + dhdy(i,j+1))*ocean_grid%mask2dCv(i,j)
+        workx(i,j) = 0.5*(dhdx(i,j) + dhdx(i+1,j))*ocean_grid%mask2dCu(i,j)
+        worky(i,j) = 0.5*(dhdy(i,j) + dhdy(i,j+1))*ocean_grid%mask2dCv(i,j)
       enddo
     enddo
 
-    call State_SetExport(exportState, 'So_dhdx', isc, iec, jsc, jec, worka, ocean_grid, rc=rc)
+    call State_SetExport(exportState, 'So_dhdx', isc, iec, jsc, jec, workx, ocean_grid, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    call State_SetExport(exportState, 'So_dhdy', isc, iec, jsc, jec, workb, ocean_grid, rc=rc)
+    call State_SetExport(exportState, 'So_dhdy', isc, iec, jsc, jec, worky, ocean_grid, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    deallocate(workx, worky)
   else
+    allocate(dhdx_rot(isc:iec, jsc:jec), source=0.0_ESMF_KIND_R8) !global indices without halos
+    allocate(dhdy_rot(isc:iec, jsc:jec), source=0.0_ESMF_KIND_R8) !global indices without halos
+
     !rotate slopes from tripolar grid back to lat/lon grid,  x,y => latlon (CCW)
     ! "ocean_grid" uses has halos and uses local indexing.
     do j = jsc, jec
@@ -892,6 +894,8 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
 
     call State_SetExport(exportState, 'So_dhdy', isc, iec, jsc, jec, dhdy_rot, ocean_grid, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    deallocate(dhdx_rot, dhdy_rot)
   endif
 
   ! -------
@@ -904,11 +908,7 @@ subroutine mom_export(ocean_public, ocean_grid, ocean_state, exportState, clock,
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
   endif
 
-  deallocate(ssh, dhdx, dhdy, dhdx_rot, dhdy_rot)
-  if (allocated(uc)) deallocate(uc)
-  if (allocated(vc)) deallocate(vc)
-  if (allocated(worka)) deallocate(worka)
-  if (allocated(workb)) deallocate(workb)
+  deallocate(ssh, dhdx, dhdy)
 
 end subroutine mom_export
 
