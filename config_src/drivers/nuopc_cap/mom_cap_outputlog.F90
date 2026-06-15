@@ -50,8 +50,8 @@ contains
   public :: outputlog_init, outputlog_run, outputlog_restart
 
   ! the allowable output frequency for MOM6 history, in hours only
-  integer, parameter :: n_freq  = 3
-  integer, parameter, dimension(n_freq) :: freq = (/3, 6, 24/)
+  integer, parameter :: n_freq  = 4
+  integer, parameter, dimension(n_freq) :: freq = (/1, 3, 6, 24/)
   ! TODO: for multiple output freq in same run, a different known filename
   ! root for different freqs needs to be read in, consistent with the diag table
 
@@ -229,7 +229,7 @@ contains
       olog(n)%time_lastrestart    = lastrestart
       olog(n)%fhoffset            = 60*freq(n)*tincrement
       olog(n)%filename_fhoffset   = 90*freq(n)*tincrement
-
+ 
       ! the time offset in hours required to ensure the alarm rings at multiples of 6
       if (freq(n) >= 6) then
         alarmoffset = toffset*60*tincrement
@@ -310,7 +310,13 @@ contains
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
           olog(n)%chkfile_nextAdvance = .true.
 
-          timestr = get_timestr(nextTime-olog(n)%filename_fhoffset, rc=rc)
+          ! For hourly logs, no offset
+          if(freq(n) == 1) then
+            timestr = get_timestr(currTime, rc=rc)
+          else
+            timestr = get_timestr(nextTime-olog(n)%filename_fhoffset, rc=rc)
+          endif
+
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
           write(olog(n)%filename,'(A)')trim(outputdir)//'ocn_'//trim(timestr)//'.nc'
 
@@ -327,7 +333,8 @@ contains
             if (ChkErr(rc,__LINE__,u_FILE_u)) return
             olog(n)%createsize = fsize(1)
 
-            if (nlen(1) == 0) then
+            if (nlen(1) == 0 .or. freq(n) == 1) then
+              !If hourly logs, filesize will not change
               olog(n)%use_filesize = .false.
             else
               olog(n)%use_filesize = .true.
@@ -364,7 +371,11 @@ contains
           call ESMF_AlarmGet(olog(n)%alarm, prevRingTime=prevring, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-          timestr = get_timestr(prevring-30*freq(n)*tincrement, rc=rc)
+          if (freq(n) == 1) then
+            timestr = get_timestr(prevring, rc=rc)
+          else
+            timestr = get_timestr(prevring-30*freq(n)*tincrement, rc=rc)
+          endif
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
           write(olog(n)%filename,'(A)')trim(outputdir)//'ocn_'//trim(timestr)//'.nc'
 
