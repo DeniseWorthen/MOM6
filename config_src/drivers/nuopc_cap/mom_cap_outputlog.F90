@@ -322,7 +322,7 @@ contains
               olog(n)%time_lastrestart = lastrestart
               if (is_root_pe()) then
                 call log_restart_fh(currTime-olog(n)%fhoffset, startTime, 'mom6.'//chour, prefixtime=.true., &
-                     lastrestart=olog(n)%time_lastrestart, lastoutput=olog(n)%filename, rc=rc)
+                     lastrestart=olog(n)%time_lastrestart, lastoutput=olog(n)%filename, output_dir=outputdir, rc=rc)
                 if (ChkErr(rc,__LINE__,u_FILE_u)) return
               endif
             endif
