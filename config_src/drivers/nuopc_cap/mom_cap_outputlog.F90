@@ -50,8 +50,8 @@ contains
   public :: outputlog_init, outputlog_run, outputlog_restart
 
   ! the allowable output frequency for MOM6 history, in hours only
-  integer, parameter :: n_freq  = 3
-  integer, parameter, dimension(n_freq) :: freq = (/3, 6, 24/)
+  integer, parameter :: n_freq  = 4
+  integer, parameter, dimension(n_freq) :: freq = (/1, 3, 6, 24/)
   ! TODO: for multiple output freq in same run, a different known filename
   ! root for different freqs needs to be read in, consistent with the diag table
 
@@ -225,10 +225,14 @@ contains
       olog(n)%chkfile_nextAdvance = .false.
       olog(n)%use_filesize        = .false.
       olog(n)%filename            = ''
-      olog(n)%createsize            = 0
+      olog(n)%createsize          = 0
       olog(n)%time_lastrestart    = lastrestart
       olog(n)%fhoffset            = 60*freq(n)*tincrement
-      olog(n)%filename_fhoffset   = 90*freq(n)*tincrement
+      if (freq(n) == 1) then
+        olog(n)%filename_fhoffset   = 60*freq(n)*tincrement
+      else
+        olog(n)%filename_fhoffset   = 90*freq(n)*tincrement
+      end if
 
       ! the time offset in hours required to ensure the alarm rings at multiples of 6
       if (freq(n) >= 6) then
@@ -306,6 +310,24 @@ contains
         ! when the alarm rings, set file check on next advance and construct the filename
         if (ESMF_AlarmIsRinging(olog(n)%alarm, rc=rc)) then
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+          ! for freq_n = 1, assumed to be instantaneous output, check the completeness of existing fname and log it
+          ! before updating the filename for this ringtime
+          if (freq(n) == 1) then
+            fname = trim(olog(n)%filename)
+            filecomplete = file_is_complete(fname, olog(n)%use_filesize, olog(n)%createsize, rc)
+            if (ChkErr(rc,__LINE__,u_FILE_u)) return
+            if (filecomplete) then
+              olog(n)%chkfile_nextAdvance = .false.
+              olog(n)%time_lastrestart = lastrestart
+              if (is_root_pe()) then
+                call log_restart_fh(currTime-olog(n)%fhoffset, startTime, 'mom6.'//chour, prefixtime=.true., &
+                     lastrestart=olog(n)%time_lastrestart, lastoutput=olog(n)%filename, output_dir=outputdir, rc=rc)
+                if (ChkErr(rc,__LINE__,u_FILE_u)) return
+              endif
+            endif
+          endif
+
           call ESMF_AlarmRingerOff(olog(n)%alarm, rc=rc )
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
           olog(n)%chkfile_nextAdvance = .true.
@@ -364,7 +386,11 @@ contains
           call ESMF_AlarmGet(olog(n)%alarm, prevRingTime=prevring, rc=rc)
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-          timestr = get_timestr(prevring-30*freq(n)*tincrement, rc=rc)
+          if (freq(n) == 1) then
+            timestr = get_timestr(prevring-0*freq(n)*tincrement, rc=rc)
+          else
+            timestr = get_timestr(prevring-30*freq(n)*tincrement, rc=rc)
+          endif
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
           write(olog(n)%filename,'(A)')trim(outputdir)//'ocn_'//trim(timestr)//'.nc'
 
