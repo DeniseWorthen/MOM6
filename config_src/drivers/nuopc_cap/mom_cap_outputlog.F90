@@ -30,6 +30,7 @@ subroutine outputlog_restart(mclock, num_rest_files, rc)
   rc = ESMF_SUCCESS
 end subroutine outputlog_restart
 #else
+use MOM_coms_infra        , only : root_pe
 use MOM_error_handler     , only : is_root_pe, MOM_error, FATAL
 use NUOPC                 , only : NUOPC_CompAttributeGet
 use ESMF                  , only : ESMF_GridComp, ESMF_GridCompGet, ESMF_VM, ESMF_VMGet
@@ -37,12 +38,15 @@ use ESMF                  , only : ESMF_Time, ESMF_Clock, ESMF_ClockGet, ESMF_Al
 use ESMF                  , only : ESMF_ClockGetAlarm, ESMF_AlarmIsRinging, ESMF_AlarmRingerOff
 use ESMF                  , only : ESMF_ClockGetNextTime, ESMF_TimeGet, ESMF_TimeInterval
 use ESMF                  , only : ESMF_AlarmGet, ESMF_TimeIntervalSet, ESMF_TimeIntervalPrint
-use ESMF                  , only : ESMF_SUCCESS, ESMF_LogWrite, ESMF_LOGMSG_INFO, ESMF_VMBroadCast
+use ESMF                  , only : ESMF_SUCCESS, ESMF_LogWrite, ESMF_LOGMSG_INFO, ESMF_FAILURE
 use ESMF                  , only : ESMF_LogSetError, ESMF_LogFoundError, ESMF_LOGERR_PASSTHRU
 use ESMF                  , only : operator(*), operator(+), operator(-), operator(>), operator(==)
 use MOM_cap_methods       , only : ChkErr
 use MOM_cap_time          , only : AlarmInit
 use shr_is_restart_fh_mod , only : log_restart_fh
+use outputlog_methods     , only : file_is_complete, get_unlimited_len, get_timestr, get_importexport
+use outputlog_methods     , only : debug_info, nf90_err
+use mpi_f08               , only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
 use netcdf
 
 implicit none; private
@@ -112,6 +116,7 @@ end type outputlog_type
 
 type(outputlog_type) :: olog(n_freq)
 
+type(MPI_Comm)     :: mpicomm
 integer            :: toffset
 logical            :: debug
 logical            :: existflag
@@ -136,7 +141,7 @@ subroutine outputlog_init(gcomp, mclock, rc)
   type(ESMF_Time)         :: mcurrTime
   type(ESMF_TimeInterval) :: alarmoffset
   logical                 :: isPresent, isSet
-  integer                 :: n
+  integer                 :: n, int_mpic
   integer                 :: year, month, day, hour
   character(len=3)        :: chour
   character(len=256)      :: msgString
@@ -147,6 +152,9 @@ subroutine outputlog_init(gcomp, mclock, rc)
   rc = ESMF_SUCCESS
   call ESMF_GridCompGet(gcomp, vm=vm, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  call ESMF_VMGet(vm=vm,mpiCommunicator=int_mpic, rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  mpicomm%mpi_val = int_mpic
 
   call NUOPC_CompAttributeGet(gcomp, name="mom6_restart_dir", value=value, &
        isPresent=isPresent, isSet=isSet, rc=rc)
@@ -270,7 +278,7 @@ subroutine outputlog_run(mclock, atStopTime, rc)
   type(ESMF_Time)    :: nextTime, currTime, startTime, prevRing
   logical            :: lstop
   logical            :: filecomplete
-  integer            :: n, nlen(1), fsize(1)
+  integer            :: n, nlen(1), fsize(1), ierr
   character(len=3)   :: chour
   character(len=40)  :: importexport
   character(len=16)  :: timestr
@@ -292,12 +300,11 @@ subroutine outputlog_run(mclock, atStopTime, rc)
     lstop = atStopTime
   endif
 
-  filecomplete = .false.
-  fsize(1) = nf90_fill_int
-  nlen(1)  = nf90_fill_int
-
   do n = 1,n_freq
     write(chour,'(I2.2,A)')freq(n),'h'
+    filecomplete = .false.
+    fsize(1) = nf90_fill_int
+    nlen(1)  = nf90_fill_int
     if (chour(1:2) == output_fh(1:2)) then
       call ESMF_ClockGetAlarm(mclock, alarmname=trim(olog(n)%alarm_name), alarm=olog(n)%alarm, rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -313,34 +320,41 @@ subroutine outputlog_run(mclock, atStopTime, rc)
         write(olog(n)%filename,'(A)')trim(outputdir)//'ocn_'//trim(timestr)//'.nc'
 
         fname = trim(olog(n)%filename)
-        inquire(file=fname, exist=existflag)
-        if (existflag) then
-          if (is_root_pe()) then
+        if (is_root_pe()) then
+          inquire(file=fname, exist=existflag)
+          if (existflag) then
             nlen(1) = get_unlimited_len(trim(fname))
             inquire(file=fname, size=fsize(1))
           endif
-          call ESMF_VMBroadCast(vm, nlen, 1, 0, rc=rc)
-          if (ChkErr(rc,__LINE__,u_FILE_u)) return
-          call ESMF_VMBroadCast(vm, fsize, 1, 0, rc=rc)
-          if (ChkErr(rc,__LINE__,u_FILE_u)) return
-          olog(n)%createsize = fsize(1)
-
-          if (nlen(1) == 0) then
-            olog(n)%use_filesize = .false.
-          else
-            olog(n)%use_filesize = .true.
-          endif
         endif
+        call MPI_Bcast(nlen, 1, MPI_INTEGER, root_pe(), mpicomm, ierr)
+        if (ierr /= MPI_SUCCESS) then
+          rc = ESMF_FAILURE
+          return
+        endif
+        call MPI_Bcast(fsize, 1, MPI_INTEGER, root_pe(), mpicomm, ierr)
+        if (ierr /= MPI_SUCCESS) then
+          rc = ESMF_FAILURE
+          return
+        endif
+
+        olog(n)%createsize = fsize(1)
+        if (nlen(1) == 0) then
+          olog(n)%use_filesize = .false.
+        else
+          olog(n)%use_filesize = .true.
+        endif
+
         if (debug .and. is_root_pe()) then
           print '(A,2(A,L),A,2i16)',trim(subname)//' fname '//trim(olog(n)%filename)//'  '//trim(importexport), &
                ' checkflag ',olog(n)%chkfile_nextAdvance,' use_filesize ',olog(n)%use_filesize,                 &
                '  ',olog(n)%createsize,nlen(1)
         endif
-      endif
+      endif ! ESMF_AlarmIsRinging
 
       if (olog(n)%chkfile_nextAdvance) then
         fname = trim(olog(n)%filename)
-        filecomplete = file_is_complete(fname, olog(n)%use_filesize, olog(n)%createsize, rc)
+        filecomplete = file_is_complete(mpicomm, fname, olog(n)%use_filesize, olog(n)%createsize, rc)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
         if (filecomplete) then
@@ -367,7 +381,7 @@ subroutine outputlog_run(mclock, atStopTime, rc)
         write(olog(n)%filename,'(A)')trim(outputdir)//'ocn_'//trim(timestr)//'.nc'
 
         fname = trim(olog(n)%filename)
-        filecomplete = file_is_complete(fname, olog(n)%use_filesize, olog(n)%createsize, rc)
+        filecomplete = file_is_complete(mpicomm, fname, olog(n)%use_filesize, olog(n)%createsize, rc)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
         if (filecomplete) then
@@ -399,7 +413,7 @@ subroutine outputlog_restart(mclock, num_rest_files, rc)
 
   ! local variables
   type(ESMF_Time)      :: startTime, currTime, nextTime
-  integer              :: n, nlen(1)
+  integer              :: n, nlen(1), ierr
   integer              :: year, month, day, hour, minute, seconds
   character(len=256)   :: fname
   character(len=15)    :: timestr
@@ -440,21 +454,24 @@ subroutine outputlog_restart(mclock, num_rest_files, rc)
     endif
 
     ! check if file is written
-    inquire(file=trim(fname), exist=existflag)
-    if (existflag) then
-      if (is_root_pe())then
+    if (is_root_pe())then
+      inquire(file=trim(fname), exist=existflag)
+      if (existflag) then
         nlen(1) = get_unlimited_len(trim(fname))
       endif
-      call ESMF_VMBroadCast(vm, nlen, 1, 0, rc=rc)
-      if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    endif
+    call MPI_Bcast(nlen, 1, MPI_INTEGER, root_pe(), mpicomm, ierr)
+    if (ierr /= MPI_SUCCESS) then
+      rc = ESMF_FAILURE
+      return
+    endif
 
-      if (nlen(1) > 0) allDone(n) = .true.
-      if (debug .and. is_root_pe()) then
-        if (nlen(1) > 0) then
-          print '(A)',trim(subname)//' restart '//trim(fname)//'  '//trim(importexport)//' complete'
-        else
-          print '(A)',trim(subname)//' restart '//trim(fname)//'  '//trim(importexport)//' still 0'
-        endif
+    if (nlen(1) > 0) allDone(n) = .true.
+    if (debug .and. is_root_pe()) then
+      if (nlen(1) > 0) then
+        print '(A)',trim(subname)//' restart '//trim(fname)//'  '//trim(importexport)//' complete'
+      else
+        print '(A)',trim(subname)//' restart '//trim(fname)//'  '//trim(importexport)//' still 0'
       endif
     endif
   enddo ! num_rest_files
@@ -467,157 +484,5 @@ subroutine outputlog_restart(mclock, num_rest_files, rc)
     endif
   endif
 end subroutine outputlog_restart
-
-!> Determine if the netcdf output file is complete
-!!
-!! @param[in]   fname         the file name
-!! @param[in]   chk4size      logical flag for check method in use
-!! @param[in]   createsize    the filesize at creation
-!! @param[out]  rc            return code
-!! @return                    logical flag, true if the file is complete
-logical function file_is_complete(fname, chk4size, createsize, rc) result(filecomplete)
-  character(len=*), intent(in)  :: fname
-  logical,          intent(in)  :: chk4size
-  integer,          intent(in)  :: createsize
-  integer,          intent(out) :: rc
-
-  integer :: nlen(1), fsize(1)
-  !----------------------------------------------------------------------------
-
-  rc = ESMF_SUCCESS
-
-  filecomplete = .false.
-  nlen(1) = nf90_fill_int
-  fsize(1) = nf90_fill_int
-
-  inquire(file=fname, exist=existflag)
-  if (existflag) then
-    if (is_root_pe()) then
-      nlen(1) = get_unlimited_len(fname)
-      inquire(file=fname, size=fsize(1))
-    endif
-    call ESMF_VMBroadCast(vm, nlen, 1, 0, rc=rc)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    call ESMF_VMBroadCast(vm, fsize, 1, 0, rc=rc)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
-  endif
-
-  if (chk4size) then
-    filecomplete = (nlen(1) > 0 .and. fsize(1) > createsize)
-  else
-    filecomplete = (nlen(1) > 0)
-  endif
-end function file_is_complete
-
-!> Return the length of the unlimited dimension
-!!
-!! @param[in]  fname   the file name
-!! @return             unlimited dimension length
-integer function get_unlimited_len(fname) result(unlen)
-  character(len=*), intent(in) :: fname
-
-  integer :: ncid, dimid
-  !----------------------------------------------------------------------------
-
-  unlen = 0
-  call nf90_err(nf90_open(trim(fname), nf90_nowrite, ncid), 'nf90_open: '//trim(fname))
-  call nf90_err(nf90_inquire(ncid, unlimiteddimid=dimid), 'inquire unlimiteddimid')
-  call nf90_err(nf90_inquire_dimension(ncid, dimid, len=unlen), 'inquire unlimited dimension')
-  call nf90_err(nf90_close(ncid), 'close: '//trim(fname))
-end function get_unlimited_len
-
-!> Convenience function to return a 16-character time string
-!!
-!! @param[in]  MyTime   an ESMF_Time object
-!! @param[out] rc       return code
-!! @return              16-character formatted time string (YYYY_MM_DD_HH_MM)
-character(len=16) function get_timestr(MyTime, rc) result(timestr)
-  type(ESMF_Time), intent(in)  :: MyTime
-  integer,         intent(out) :: rc
-
-  integer :: year, month, day, hour, minute
-  !----------------------------------------------------------------------------
-
-  rc = ESMF_SUCCESS
-
-  call ESMF_TimeGet(MyTime, yy=year, mm=month, dd=day, h=hour, m=minute, rc=rc)
-  if (ChkErr(rc,__LINE__,u_FILE_u)) return
-  write(timestr,'(I4.4,4(A,I2.2))')year,'_',month,'_',day,'_',hour,'_',minute
-end function get_timestr
-
-!> Convenience function to return import/export timestring
-!!
-!! @param[in]  currTime   an ESMF_Time object
-!! @param[in]  nextTime   an ESMF_Time object
-!! @param[out] rc         return code
-!! @return                40-character string
-character(len=40) function get_importexport(currTime, nextTime, rc) result(importexport)
-
-  type(ESMF_Time), intent(in)  :: currTime, nextTime
-  integer,         intent(out) :: rc
-
-  character(len=19) :: import_timestr, export_timestr
-  !----------------------------------------------------------------------------
-
-  rc = ESMF_SUCCESS
-
-  call ESMF_TimeGet(currTime, timestring=import_timestr, rc=rc)
-  if (ChkErr(rc,__LINE__,u_FILE_u)) return
-  call ESMF_TimeGet(nextTime, timestring=export_timestr, rc=rc)
-  if (ChkErr(rc,__LINE__,u_FILE_u)) return
-  importexport = trim(import_timestr)//'  '//trim(export_timestr)
-end function get_importexport
-
-!> Write debug info to stdout, only called on root pe
-!!
-!! @param[in]    tag            an information tag
-!! @param[in]    fname          the filename to check
-!! @param[in]    filesize       the filesize at creation time
-!! @param[in]    chkflag        logical flag for checking next Advance
-!! @param[in]    timestring     a timestring
-subroutine debug_info(tag,fname,chkflag,filesize,timestring)
-  character(len=*), intent(in) :: tag
-  character(len=*), intent(in) :: fname
-  integer,          intent(in) :: filesize
-  logical,          intent(in) :: chkflag
-  character(len=*), intent(in) :: timestring
-
-  integer :: fsize
-  character(len=256) :: msgString
-  !----------------------------------------------------------------------------
-
-  inquire(file=fname, exist=existflag)
-  if (existflag) then
-    inquire(file=fname, size=fsize)
-    write(msgString,'(A)')tag//'  '//fname//' exists '//timestring
-    if (chkflag) then
-      print '(A,L,2i16)',trim(msgString)//' not complete, chkflag ',chkflag,filesize,fsize
-    else
-      print '(A,L,2i16)',trim(msgString)//'     complete, chkflag ',chkflag,filesize,fsize
-    endif
-  else
-    write(msgString,'(A)')tag//'  '//fname//' does not exist '//timestring
-    print '(A)',trim(msgString)
-  endif
-end subroutine debug_info
-
-!> Handle netcdf errors
-!!
-!! @param[in]  ierr        the error code
-!! @param[in]  string      the error message
-subroutine nf90_err(ierr, string)
-  integer,          intent(in) :: ierr
-  character(len=*), intent(in) :: string
-  !----------------------------------------------------------------------------
-
-  if (ierr /= nf90_noerr) then
-    write(0, '(A)') 'FATAL ERROR: ' // trim(string)// ' : ' // trim(nf90_strerror(ierr))
-    ! This fails on WCOSS2 with Intel 19 compiler. See https://community.intel.com/
-    ! Search term "STOP and ERROR STOP with variable stop codes"
-    ! When WCOSS2 moves to Intel 2020+, uncomment the next line and remove stop 99
-    !stop ierr
-    stop 99
-  endif
-end subroutine nf90_err
 #endif
 end module MOM_cap_outputlog
