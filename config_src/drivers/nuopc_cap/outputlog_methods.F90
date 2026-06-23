@@ -11,8 +11,8 @@ module outputlog_methods
   use MOM_error_handler, only : is_root_pe, MOM_error, FATAL
   use MOM_cap_methods,   only : ChkErr
   use ESMF,              only : ESMF_SUCCESS, ESMF_Failure, ESMF_Time, ESMF_TimeGet
+  use mpi_f08,           only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
   use netcdf
-  use mpi_f08
 
   implicit none; private
 
@@ -23,8 +23,10 @@ module outputlog_methods
        __FILE__
 
 contains
+
 !> Determine if the netcdf output file is complete
 !!
+!! @param[in]   comm          the MPI communicator
 !! @param[in]   fname         the file name
 !! @param[in]   chk4size      logical flag for check method in use
 !! @param[in]   createsize    the filesize at creation
