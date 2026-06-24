@@ -2092,6 +2092,8 @@ subroutine ModelSetRunClock(gcomp, rc)
   type(ESMF_Time)          :: mcurrtime, dcurrtime
   type(ESMF_Time)          :: mstoptime, dstoptime
   type(ESMF_TimeInterval)  :: mtimestep, dtimestep
+  type(ocean_internalstate_wrapper) :: ocean_internalstate
+  type(ocean_grid_type), pointer    :: ocean_grid => null()
   character(len=128)       :: mtimestring, dtimestring
   character(len=256)       :: cvalue
   character(len=256)       :: restart_option ! Restart option units
@@ -2249,7 +2251,13 @@ subroutine ModelSetRunClock(gcomp, rc)
     call ESMF_TimeGet(dstoptime, timestring=timestr, rc=rc)
     call ESMF_LogWrite("Stop Alarm will ring at : "//trim(timestr), ESMF_LOGMSG_INFO)
 
-    call outputlog_init(gcomp, mclock, rc)
+    ! obtain the ocean_internalstate and pass the ocean_public_type
+    call ESMF_GridCompGetInternalState(gcomp, ocean_internalstate, rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    call get_ocean_grid(ocean_internalstate%ptr%ocean_state_type_ptr, ocean_grid)
+
+    call outputlog_init(gcomp, mclock, ocean_grid, rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     first_time = .false.
 

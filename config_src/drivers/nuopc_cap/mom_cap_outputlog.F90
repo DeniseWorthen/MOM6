@@ -6,15 +6,17 @@
 module MOM_cap_outputlog
 
 #ifdef CESMCOUPLED
-use ESMF                  , only : ESMF_GridComp, ESMF_Clock, ESMF_SUCCESS
+  use ESMF                  , only : ESMF_GridComp, ESMF_Clock, ESMF_SUCCESS
+  use MOM_grid              , only : ocean_grid_type
 implicit none; private
 
 public :: outputlog_init, outputlog_run, outputlog_restart
 contains
-subroutine outputlog_init(gcomp, mclock, rc)
-  type(ESMF_GridComp)  :: gcomp  !< an ESMF_GridComp object
-  type(ESMF_Clock)     :: mclock !< the ESMF_clock for the model
-  integer, intent(out) :: rc     !< return code
+subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
+  type(ESMF_GridComp)  :: gcomp                            !< an ESMF_GridComp object
+  type(ESMF_Clock)     :: mclock                           !< the ESMF_clock for the model
+  type(ocean_grid_type), pointer, intent(in) :: ocean_grid !< the ocean grid
+  integer, intent(out) :: rc                               !< return code
   rc = ESMF_SUCCESS
 end subroutine outputlog_init
 subroutine outputlog_run(mclock, atStopTime, rc)
@@ -33,6 +35,8 @@ end subroutine outputlog_restart
 use MOM_coms_infra        , only : root_pe
 use MOM_error_handler     , only : is_root_pe, MOM_error, FATAL
 use MOM_get_input         , only : get_MOM_input, directories
+use MOM_grid              , only : ocean_grid_type
+use mpp_domains_mod       , only : domain2d, mpp_get_layout, mpp_get_io_domain
 use NUOPC                 , only : NUOPC_CompAttributeGet
 use ESMF                  , only : ESMF_GridComp, ESMF_GridCompGet, ESMF_VM, ESMF_VMGet
 use ESMF                  , only : ESMF_Time, ESMF_Clock, ESMF_ClockGet, ESMF_Alarm, ESMF_AlarmSet
@@ -132,20 +136,24 @@ character(len=*), parameter :: u_FILE_u = &
 contains
 !> Initialize a set of Alarms at the allowed output frequencies
 !!
-!! @param gcomp   an ESMF_GridComp object
-!! @param clock   an ESMF_Clock object
-!! @param rc      return code
-subroutine outputlog_init(gcomp, mclock, rc)
+!! @param      gcomp        an ESMF_GridComp object
+!! @param      clock        an ESMF_Clock object
+!! @param[in]  ocean_grid   ocean grid
+!! @param[out] rc           return code
+subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
+
   type(ESMF_GridComp)  :: gcomp
   type(ESMF_Clock)     :: mclock
+  type(ocean_grid_type), pointer, intent(in) :: ocean_grid
   integer, intent(out) :: rc
 
   ! local variables
   type(ESMF_Time)         :: mcurrTime
   type(ESMF_TimeInterval) :: alarmoffset
   type(directories)       :: dirs
+  type(domain2d), pointer :: io_domain => null()
   logical                 :: isPresent, isSet
-  integer                 :: n, int_mpic
+  integer                 :: n, int_mpic, nfiles, io_layout(2)
   integer                 :: year, month, day, hour
   character(len=3)        :: chour
   character(len=256)      :: msgString
@@ -163,6 +171,14 @@ subroutine outputlog_init(gcomp, mclock, rc)
   call get_MOM_input(dirs=dirs)
   restartdir = trim(dirs%restart_output_dir)
   outputdir = trim(dirs%output_directory)
+
+  io_domain => mpp_get_io_domain(ocean_grid%Domain%mpp_domain)
+  if (associated(io_domain)) then
+    call mpp_get_layout(io_domain, io_layout)
+    nfiles = io_layout(1) * io_layout(2)
+  else
+    nfiles = 1
+  endif
 
   call ESMF_ClockGet(mclock, currTime=mcurrTime, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
