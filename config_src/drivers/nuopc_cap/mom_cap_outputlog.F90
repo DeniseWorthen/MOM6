@@ -50,7 +50,8 @@ use MOM_cap_methods       , only : ChkErr
 use MOM_cap_time          , only : AlarmInit
 use shr_is_restart_fh_mod , only : log_restart_fh
 use outputlog_methods     , only : file_is_complete, get_unlimited_len, get_timestr, get_importexport
-use outputlog_methods     , only : debug_info, nf90_err
+use outputlog_methods     , only : readnml, debug_info, nf90_err
+use outputlog_methods     , only : outputlog_type
 use mpi_f08               , only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
 use netcdf
 
@@ -106,25 +107,26 @@ type(ESMF_VM)           :: vm
 type(ESMF_TimeInterval) :: tincrement
 type(ESMF_Time)         :: lastrestart
 
-type :: outputlog_type
-  character(len=14)       :: alarm_name
-  integer                 :: opt_n
-  logical                 :: requested
-  character(len=4)        :: type
-  logical                 :: chkfile_nextAdvance
-  logical                 :: use_filesize
-  character(len=256)      :: filename
-  integer                 :: createsize
-  type(ESMF_Alarm)        :: alarm
-  type(ESMF_TimeInterval) :: fhoffset
-  type(ESMF_TimeInterval) :: filename_fhoffset
-  type(ESMF_Time)         :: time_lastrestart
-end type outputlog_type
+! type :: outputlog_type
+!   character(len=14)       :: alarm_name
+!   integer                 :: opt_n
+!   logical                 :: requested
+!   character(len=4)        :: type
+!   logical                 :: chkfile_nextAdvance
+!   logical                 :: use_filesize
+!   character(len=256)      :: filename
+!   integer                 :: createsize
+!   type(ESMF_Alarm)        :: alarm
+!   type(ESMF_TimeInterval) :: fhoffset
+!   type(ESMF_TimeInterval) :: filename_fhoffset
+!   type(ESMF_Time)         :: time_lastrestart
+! end type outputlog_type
 
 type(outputlog_type) :: olog(n_freq)
 
 type(MPI_Comm)     :: mpicomm
 integer            :: toffset
+integer            :: nfiles
 logical            :: debug
 logical            :: existflag
 character(len=256) :: restartdir
@@ -153,7 +155,7 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
   type(directories)       :: dirs
   type(domain2d), pointer :: io_domain => null()
   logical                 :: isPresent, isSet
-  integer                 :: n, int_mpic, nfiles, io_layout(2)
+  integer                 :: n, int_mpic, io_layout(2)
   integer                 :: year, month, day, hour
   character(len=3)        :: chour
   character(len=256)      :: msgString
@@ -233,6 +235,7 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
   enddo
 
   call readnml('input.nml', olog, debug, errmsg, rc=rc)
+  rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
   if (debug .and. is_root_pe()) then
@@ -302,6 +305,7 @@ subroutine outputlog_run(mclock, atStopTime, rc)
 
         timestr = get_timestr(nextTime-olog(n)%filename_fhoffset, rc=rc)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
+        ! function to create filename based on fname root,timestring,nfiles
         write(olog(n)%filename,'(A)')trim(outputdir)//'ocn_'//trim(timestr)//'.nc'
 
         fname = trim(olog(n)%filename)
@@ -469,81 +473,5 @@ subroutine outputlog_restart(mclock, num_rest_files, rc)
     endif
   endif
 end subroutine outputlog_restart
-
-!> Read nml options to configure output logging
-!!
-!! @param[in]     fname    input namelist file
-!! @param[inout]  cf       outputlog configuration
-!! @param[out]    debug    logical flag to enable debug output
-!! @param[out]    errmsg   error message
-!! @param[out]    rc       return code
-subroutine readnml(fname, cf, debug, errmsg, rc)
-
-  character(len=*),     intent(in)    :: fname
-  type(outputlog_type), intent(inout) :: cf(:)
-  logical,              intent(out)   :: debug
-  character(len=*),     intent(out)   :: errmsg
-  integer,              intent(out)   :: rc
-
-  integer :: n, nn, nfreq, iounit, ierr
-  logical :: existflag, output_debug
-
-  integer, allocatable :: output_fh(:)
-  character(len=4), allocatable :: output_type(:)
-
-  namelist / MOM_outputlog_nml/ output_fh, output_type, output_debug
-
-  rc = ESMF_SUCCESS
-
-  errmsg = ''
-  nfreq = size(cf)
-  allocate(output_fh(1:nfreq), source = 0)
-  allocate(output_type(1:nfreq), source = '')
-  output_debug = .false.
-
-  inquire(file=trim(fname), exist=existflag)
-  if (.not. existflag) then
-    write (errmsg, '(a)') 'FATAL ERROR: input file '//trim(fname)//' does not exist'
-    rc = ESMF_Failure
-    return
-  else
-    open (action='read', file=trim(fname), iostat=ierr, newunit=iounit)
-    read (nml=MOM_outputlog_nml, iostat=ierr, unit=iounit)
-    if (ierr /= 0) then
-      rc = ESMF_Failure
-      write (errmsg, '(a)') 'FATAL ERROR: invalid namelist format'
-      close (iounit)
-      return
-    end if
-    close (iounit)
-  end if
-
-
-  debug = output_debug
-  do n = 1,nfreq
-    if (output_fh(n) /= 0) then
-      do nn = 1,nfreq
-        if (output_fh(n) == cf(nn)%opt_n) then
-          cf(nn)%requested = .true.
-          if (len_trim(output_type(n)) == 0) then
-            cf(nn)%type = 'avg'
-          else
-            cf(nn)%type = trim(output_type(n))
-          endif
-        endif
-      enddo
-    endif
-  enddo
-
-  if (.not. any(cf%requested)) then
-    do n = 1,nfreq
-      if (cf(n)%opt_n == 6) then
-        cf(n)%requested = .true.
-        cf(n)%type = 'avg'
-      endif
-    enddo
-  endif
-
-end subroutine readnml
 #endif
 end module MOM_cap_outputlog

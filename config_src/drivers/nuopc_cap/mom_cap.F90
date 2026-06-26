@@ -113,13 +113,13 @@ type ocean_internalstate_type
   type(ocean_public_type),       pointer :: ocean_public_type_ptr
   type(ocean_state_type),        pointer :: ocean_state_type_ptr
   type(ice_ocean_boundary_type), pointer :: ice_ocean_boundary_type_ptr
-end type
+end type ocean_internalstate_type
 
 !>  Wrapper-derived type required to associate an internal state instance
 !! with the ESMF/NUOPC component
 type ocean_internalstate_wrapper
   type(ocean_internalstate_type), pointer :: ptr
-end type
+end type ocean_internalstate_wrapper
 
 !> Contains field information
 type fld_list_type

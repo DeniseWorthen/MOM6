@@ -7,22 +7,112 @@
 
 module outputlog_methods
 
-  use MOM_coms_infra,    only : root_pe
-  use MOM_error_handler, only : is_root_pe, MOM_error, FATAL
-  use MOM_cap_methods,   only : ChkErr
-  use ESMF,              only : ESMF_SUCCESS, ESMF_Failure, ESMF_Time, ESMF_TimeGet
-  use mpi_f08,           only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
-  use netcdf
+use ESMF,              only : ESMF_Alarm, ESMF_TimeInterval
+use ESMF,              only : ESMF_SUCCESS, ESMF_Failure, ESMF_Time, ESMF_TimeGet
+use MOM_coms_infra,    only : root_pe
+use MOM_error_handler, only : is_root_pe, MOM_error, FATAL
+use MOM_cap_methods,   only : ChkErr
+use mpi_f08,           only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
+use netcdf
 
-  implicit none; private
+implicit none; private
 
-  public :: file_is_complete, get_unlimited_len, get_timestr, get_importexport
-  public :: debug_info, nf90_err
+type :: outputlog_type
+  character(len=14)       :: alarm_name
+  integer                 :: opt_n
+  logical                 :: requested
+  character(len=4)        :: type
+  logical                 :: chkfile_nextAdvance
+  logical                 :: use_filesize
+  character(len=256)      :: filename
+  integer                 :: createsize
+  type(ESMF_Alarm)        :: alarm
+  type(ESMF_TimeInterval) :: fhoffset
+  type(ESMF_TimeInterval) :: filename_fhoffset
+  type(ESMF_Time)         :: time_lastrestart
+end type outputlog_type
 
-  character(len=*), parameter :: u_FILE_u = &
-       __FILE__
+character(len=*), parameter :: u_FILE_u = &
+     __FILE__
+
+public :: file_is_complete, get_unlimited_len, get_timestr, get_importexport
+public :: readnml, debug_info, nf90_err
+public :: outputlog_type
 
 contains
+
+!> Read nml options to configure output logging
+!!
+!! @param[in]     fname    input namelist file
+!! @param[inout]  cf       outputlog configuration
+!! @param[out]    debug    logical flag to enable debug output
+!! @param[out]    errmsg   error message
+!! @param[out]    rc       return code
+subroutine readnml(fname, cf, debug, errmsg, rc)
+
+  character(len=*),     intent(in)    :: fname
+  type(outputlog_type), intent(inout) :: cf(:)
+  logical,              intent(out)   :: debug
+  character(len=*),     intent(out)   :: errmsg
+  integer,              intent(out)   :: rc
+
+  integer :: n, nn, nfreq, iounit, ierr
+  logical :: existflag, output_debug
+
+  integer, allocatable :: output_fh(:)
+  character(len=4), allocatable :: output_type(:)
+
+  namelist / MOM_outputlog_nml/ output_fh, output_type, output_debug
+
+  rc = 0
+  errmsg = ''
+  nfreq = size(cf)
+  allocate(output_fh(1:nfreq), source = 0)
+  allocate(output_type(1:nfreq), source = cf(1:nfreq)%type)
+  output_debug = .false.
+
+  inquire(file=trim(fname), exist=existflag)
+  if (.not. existflag) then
+    write (errmsg, '(a)') 'FATAL ERROR: input file '//trim(fname)//' does not exist'
+    rc = -1
+    return
+  else
+    open (action='read', file=trim(fname), iostat=ierr, newunit=iounit)
+    read (nml=MOM_outputlog_nml, iostat=ierr, unit=iounit)
+    close (iounit)
+    if (ierr /= 0) then
+      cf(:)%requested = .false.
+      write (errmsg, '(a)') 'MOM output logging disabled '
+      return
+    endif
+  endif
+
+  debug = output_debug
+  do n = 1,nfreq
+    if (output_fh(n) /= 0) then
+      do nn = 1,nfreq
+        if (output_fh(n) == cf(nn)%opt_n) then
+          cf(nn)%requested = .true.
+          if (len_trim(output_type(n)) == 0) then
+            cf(nn)%type = 'avg'
+          else
+            cf(nn)%type = trim(output_type(n))
+          endif
+        endif
+      enddo
+    endif
+  enddo
+
+  !? force default 6h, maybe not
+  if (.not. any(cf%requested)) then
+    do n = 1,nfreq
+      if (cf(n)%opt_n == 6) then
+        cf(n)%requested = .true.
+        cf(n)%type = 'avg'
+      endif
+    enddo
+  endif
+end subroutine readnml
 
 !> Determine if the netcdf output file is complete
 !!
