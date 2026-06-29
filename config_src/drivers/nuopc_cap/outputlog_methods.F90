@@ -93,15 +93,15 @@ subroutine readnml(fname, cf, debug, errmsg, rc)
   cf%requested = setrequest(cf%opt_n, output_fh, errmsg, ierr)
   if (ierr /= 0) return
 
-  cf%type = settype(cf%opt_n, cf%requested, output_type, errmsg, ierr)
+  cf%type = settype(cf%opt_n, cf%requested, output_fh, output_type, errmsg, ierr)
   if (ierr /= 0) return
 
-  cf%fnameroot = setrootname(cf%opt_n, cf%requested, output_rootname, errmsg, ierr)
+  cf%fnameroot = setrootname(cf%opt_n, cf%requested, output_fh, output_rootname, errmsg, ierr)
   if (ierr /= 0) return
 
 end subroutine readnml
 !> TODO: doxy
-logical function setrequest(validfreqs, requested_fh, errmsg, ierr) result(is_requested)
+function setrequest(validfreqs, requested_fh, errmsg, ierr) result(is_requested)
   integer,          intent(in)  :: validfreqs(:)
   integer,          intent(in)  :: requested_fh(:)
   character(len=*), intent(out) :: errmsg
@@ -110,10 +110,12 @@ logical function setrequest(validfreqs, requested_fh, errmsg, ierr) result(is_re
   integer :: n, nfreq, reqval
   logical :: is_requested(size(validfreqs))
 
+  nfreq = size(validfreqs)
   ierr = 0
   errmsg = ''
-  nfreq = size(validfreqs)
   is_requested = .false.
+
+  if (all(requested_fh == 0)) return
 
   do n = 1,nfreq
     reqval = requested_fh(n)
@@ -126,30 +128,42 @@ logical function setrequest(validfreqs, requested_fh, errmsg, ierr) result(is_re
     endif
   enddo
 
+  do n = 1, size(requested_fh)
+    reqval = requested_fh(n)
+    if (reqval /= 0) then
+      if (count(requested_fh == reqval) > 1) then
+        ierr = 1
+        write(errmsg, '(A, I0)') "MOM_outputlog: Duplicate output frequency requested: ", reqval
+        return
+      endif
+    endif
+  enddo
+
   do n = 1, nfreq
     if (any(requested_fh == validfreqs(n))) then
       is_requested(n) = .true.
     endif
   enddo
+
 end function setrequest
 !> TODO: doxy
-function settype(validfreqs, requested, output_type, errmsg, ierr) result(requested_types)
+function settype(validfreqs, requested, output_fh, output_type, errmsg, ierr) result(filetypes)
 
   integer,          intent(in)  :: validfreqs(:)
   logical,          intent(in)  :: requested(:)
+  integer,          intent(in)  :: output_fh(:)
   character(len=*), intent(in)  :: output_type(:)
   character(len=*), intent(out) :: errmsg
   integer,          intent(out) :: ierr
 
-  character(len=7) :: requested_types(size(validfreqs))
-
-  integer :: n, nfreq
+  integer :: n, m, nfreq
   character(len=7) :: reqval
+  character(len=7) :: filetypes(size(validfreqs))
 
   nfreq = size(validfreqs)
   ierr = 0
   errmsg = ''
-  requested_types = ''
+  filetypes = ''
 
   do n = 1, nfreq
     reqval = trim(adjustl(output_type(n)))
@@ -162,82 +176,114 @@ function settype(validfreqs, requested, output_type, errmsg, ierr) result(reques
     endif
   enddo
 
+  if (.not. any(requested)) return
+
   do n = 1, nfreq
     if (requested(n)) then
-      reqval = trim(adjustl(output_type(n)))
-      if (reqval == 'average') then
-        requested_types(n) = 'average'
-      elseif (reqval == 'none') then
-        requested_types(n) = 'none'
-      else
-        requested_types(n) = 'average'
-      endif
-    else
-      requested_types(n) = ''
+      do m = 1, size(output_fh)
+        if (output_fh(m) == validfreqs(n)) then
+          reqval = trim(adjustl(output_type(m)))
+          if (reqval == 'average' .or. reqval == 'none') then
+            filetypes(n) = reqval
+          else
+            filetypes(n) = 'average'
+          endif
+          exit
+        endif
+      enddo
     endif
   enddo
+
 end function settype
 !> TODO: doxy
-function setrootname(validfreqs, requested, output_rootname, errmsg, ierr) result(rootnames)
+function setrootname(validfreqs, requested, output_fh, output_rootname, errmsg, ierr) result(rootnames)
 
   integer,          intent(in)  :: validfreqs(:)
   logical,          intent(in)  :: requested(:)
+  integer,          intent(in)  :: output_fh(:)
   character(len=*), intent(in)  :: output_rootname(:)
   character(len=*), intent(out) :: errmsg
   integer,          intent(out) :: ierr
 
+  integer :: n, m, nfreq, n_active
+  character(len=12) :: reqval
   character(len=12) :: rootnames(size(validfreqs))
-
-  integer :: n, m, nfreq, n_customroots, custom_idx
-  character(len=12) :: tmpname
 
   nfreq = size(validfreqs)
   ierr = 0
   errmsg = ''
   rootnames = ''
 
-  ! 1. Count how many custom non-blank strings the user provided in the namelist
-  n_customroots = 0
-  do n = 1, nfreq
-    if (trim(output_rootname(n)) /= '') then
-      n_customroots = n_customroots + 1
-    endif
-  enddo
+  n_active = count(requested)
+  if (n_active == 0) return
 
-  ! 2. Map custom names or construct defaults for active frequencies
-  custom_idx = 1
-  do n = 1, nfreq
-    if (requested(n)) then
-      if (custom_idx <= n_customroots) then
-        ! Assign user's custom string sequentially to active slots
-        rootnames(n) = trim(adjustl(output_rootname(custom_idx)))
-        custom_idx = custom_idx + 1
-      else
-        ! Fallback Default: "ocn_" + 2-digit integer frequency
-        write(rootnames(n), '(A, I2.2)') "ocn_", validfreqs(n)
+  ! default rootname == 'ocn' for any single freq run
+  if (n_active == 1) then
+    do n = 1, nfreq
+      if (requested(n)) then
+        do m = 1, size(output_fh)
+          if (output_fh(m) == validfreqs(n)) then
+            reqval = trim(adjustl(output_rootname(m)))
+
+            if (reqval == '') then
+              rootnames(n) = 'ocn'
+            else
+              if (len_trim(output_rootname(m)) > 12) then
+                ierr = 1
+                errmsg = "MOM_outputlog: output_rootname exceeds 12 characters."
+                return
+              endif
+              rootnames(n) = reqval
+            endif
+
+            exit
+          endif
+        enddo
       endif
-    else
-      ! Inactive slots remain strictly empty strings
-      rootnames(n) = ''
+    enddo
+    return
+  endif
+
+  ! multi-freq output; must provide rootnames
+  do n = 1, nfreq
+    if (requested(n)) then
+      do m = 1, size(output_fh)
+        if (output_fh(m) == validfreqs(n)) then
+          reqval = trim(adjustl(output_rootname(m)))
+          if (reqval == '') then
+            ierr = 1
+            write(errmsg, '(A, I0, A)') "MOM_outputlog: Multiple frequencies requested," // &
+                 " but output_rootname is missing for frequency ", validfreqs(n), "h."
+            return
+          endif
+          if (len_trim(output_rootname(m)) > 12) then
+            ierr = 1
+            errmsg = "MOM_outputlog: output_rootname exceeds 12 characters."
+            return
+          endif
+          rootnames(n) = reqval
+          exit
+        endif
+      enddo
     endif
   enddo
 
-  ! --- GUARD: Check for ambiguous (duplicate) filenames among active slots ---
+  ! multi-freq output: must provide unique rootnames
   do n = 1, nfreq
     if (requested(n)) then
-      tmpname = rootnames(n)
       do m = n + 1, nfreq
         if (requested(m)) then
-          if (tmpname == rootnames(m)) then
+          if (rootnames(n) == rootnames(m)) then
             ierr = 1
-            errmsg = "MOM_outputlog: Ambiguous fname_root '" // trim(tmpname) // &
-                 "'. Multiple active output streams cannot share the same filename."
+            errmsg = "MOM_outputlog: Ambiguous output_rootname '" // trim(rootnames(n)) // &
+                     "'. Multiple active output streams cannot share the same filename root."
             return
           endif
         endif
       enddo
     endif
   enddo
+
 end function setrootname
 
 !> Determine if the netcdf output file is complete
