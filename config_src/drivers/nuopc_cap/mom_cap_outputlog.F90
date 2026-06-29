@@ -204,6 +204,7 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
     olog(n)%opt_n               = freq(n)
     olog(n)%requested           = .false.
     olog(n)%type                = ''
+    olog(n)%fnameroot           = ''
     olog(n)%chkfile_nextAdvance = .false.
     olog(n)%use_filesize        = .false.
     olog(n)%filename            = ''
@@ -237,6 +238,7 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
   call readnml('input.nml', olog, debug, errmsg, rc=rc)
   rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  if (is_root_pe() .and. len_trim(errmsg) > 0) print '(A)',trim(subname)//trim(errmsg)
 
   if (debug .and. is_root_pe()) then
     do n = 1,n_freq
@@ -344,6 +346,7 @@ subroutine outputlog_run(mclock, atStopTime, rc)
       if (olog(n)%chkfile_nextAdvance) then
         fname = trim(olog(n)%filename)
         filecomplete = file_is_complete(mpicomm, fname, olog(n)%use_filesize, olog(n)%createsize, rc)
+        rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
         if (filecomplete) then
@@ -371,6 +374,7 @@ subroutine outputlog_run(mclock, atStopTime, rc)
 
         fname = trim(olog(n)%filename)
         filecomplete = file_is_complete(mpicomm, fname, olog(n)%use_filesize, olog(n)%createsize, rc)
+        rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
         if (filecomplete) then

@@ -21,7 +21,8 @@ type :: outputlog_type
   character(len=14)       :: alarm_name
   integer                 :: opt_n
   logical                 :: requested
-  character(len=4)        :: type
+  character(len=7)        :: type
+  character(len=12)       :: fnameroot
   logical                 :: chkfile_nextAdvance
   logical                 :: use_filesize
   character(len=256)      :: filename
@@ -60,15 +61,17 @@ subroutine readnml(fname, cf, debug, errmsg, rc)
   logical :: existflag, output_debug
 
   integer, allocatable :: output_fh(:)
-  character(len=4), allocatable :: output_type(:)
+  character(len=7), allocatable :: output_type(:)
+  character(len=24), allocatable :: output_rootname(:)
 
-  namelist / MOM_outputlog_nml/ output_fh, output_type, output_debug
+  namelist / MOM_outputlog_nml/ output_fh, output_rootname, output_type, output_debug
 
   rc = 0
   errmsg = ''
   nfreq = size(cf)
   allocate(output_fh(1:nfreq), source = 0)
   allocate(output_type(1:nfreq), source = cf(1:nfreq)%type)
+  allocate(output_rootname(1:nfreq), source = cf(1:nfreq)%fnameroot)
   output_debug = .false.
 
   inquire(file=trim(fname), exist=existflag)
@@ -82,37 +85,160 @@ subroutine readnml(fname, cf, debug, errmsg, rc)
     close (iounit)
     if (ierr /= 0) then
       cf(:)%requested = .false.
-      write (errmsg, '(a)') 'MOM output logging disabled '
+      write (errmsg, '(a)') ' MOM output logging disabled '
       return
     endif
   endif
 
-  debug = output_debug
+  cf%requested = setrequest(cf%opt_n, output_fh, errmsg, ierr)
+  if (ierr /= 0) return
+
+  cf%type = settype(cf%opt_n, cf%requested, output_type, errmsg, ierr)
+  if (ierr /= 0) return
+
+  cf%fnameroot = setrootname(cf%opt_n, cf%requested, output_rootname, errmsg, ierr)
+  if (ierr /= 0) return
+
+end subroutine readnml
+!> TODO: doxy
+logical function setrequest(validfreqs, requested_fh, errmsg, ierr) result(is_requested)
+  integer,          intent(in)  :: validfreqs(:)
+  integer,          intent(in)  :: requested_fh(:)
+  character(len=*), intent(out) :: errmsg
+  integer,          intent(out) :: ierr
+
+  integer :: n, nfreq, reqval
+  logical :: is_requested(size(validfreqs))
+
+  ierr = 0
+  errmsg = ''
+  nfreq = size(validfreqs)
+  is_requested = .false.
+
   do n = 1,nfreq
-    if (output_fh(n) /= 0) then
-      do nn = 1,nfreq
-        if (output_fh(n) == cf(nn)%opt_n) then
-          cf(nn)%requested = .true.
-          if (len_trim(output_type(n)) == 0) then
-            cf(nn)%type = 'avg'
-          else
-            cf(nn)%type = trim(output_type(n))
+    reqval = requested_fh(n)
+    if (reqval /= 0) then
+      if (.not. any(validfreqs == reqval)) then
+        ierr = 1
+        write(errmsg, '(A, I0)') "MOM_outputlog: Unsupported output frequency requested: ", reqval
+        return
+      endif
+    endif
+  enddo
+
+  do n = 1, nfreq
+    if (any(requested_fh == validfreqs(n))) then
+      is_requested(n) = .true.
+    endif
+  enddo
+end function setrequest
+!> TODO: doxy
+function settype(validfreqs, requested, output_type, errmsg, ierr) result(requested_types)
+
+  integer,          intent(in)  :: validfreqs(:)
+  logical,          intent(in)  :: requested(:)
+  character(len=*), intent(in)  :: output_type(:)
+  character(len=*), intent(out) :: errmsg
+  integer,          intent(out) :: ierr
+
+  character(len=7) :: requested_types(size(validfreqs))
+
+  integer :: n, nfreq
+  character(len=7) :: reqval
+
+  nfreq = size(validfreqs)
+  ierr = 0
+  errmsg = ''
+  requested_types = ''
+
+  do n = 1, nfreq
+    reqval = trim(adjustl(output_type(n)))
+    if (reqval /= '') then
+      if (reqval /= 'average' .and. reqval /= 'none') then
+        ierr = 1
+        errmsg = "MOM_outputlog: Invalid output_type '"// trim(reqval)// "'. Must be exactly 'average' or 'none'"
+        return
+      endif
+    endif
+  enddo
+
+  do n = 1, nfreq
+    if (requested(n)) then
+      reqval = trim(adjustl(output_type(n)))
+      if (reqval == 'average') then
+        requested_types(n) = 'average'
+      elseif (reqval == 'none') then
+        requested_types(n) = 'none'
+      else
+        requested_types(n) = 'average'
+      endif
+    else
+      requested_types(n) = ''
+    endif
+  enddo
+end function settype
+!> TODO: doxy
+function setrootname(validfreqs, requested, output_rootname, errmsg, ierr) result(rootnames)
+
+  integer,          intent(in)  :: validfreqs(:)
+  logical,          intent(in)  :: requested(:)
+  character(len=*), intent(in)  :: output_rootname(:)
+  character(len=*), intent(out) :: errmsg
+  integer,          intent(out) :: ierr
+
+  character(len=12) :: rootnames(size(validfreqs))
+
+  integer :: n, m, nfreq, n_customroots, custom_idx
+  character(len=12) :: tmpname
+
+  nfreq = size(validfreqs)
+  ierr = 0
+  errmsg = ''
+  rootnames = ''
+
+  ! 1. Count how many custom non-blank strings the user provided in the namelist
+  n_customroots = 0
+  do n = 1, nfreq
+    if (trim(output_rootname(n)) /= '') then
+      n_customroots = n_customroots + 1
+    endif
+  enddo
+
+  ! 2. Map custom names or construct defaults for active frequencies
+  custom_idx = 1
+  do n = 1, nfreq
+    if (requested(n)) then
+      if (custom_idx <= n_customroots) then
+        ! Assign user's custom string sequentially to active slots
+        rootnames(n) = trim(adjustl(output_rootname(custom_idx)))
+        custom_idx = custom_idx + 1
+      else
+        ! Fallback Default: "ocn_" + 2-digit integer frequency
+        write(rootnames(n), '(A, I2.2)') "ocn_", validfreqs(n)
+      endif
+    else
+      ! Inactive slots remain strictly empty strings
+      rootnames(n) = ''
+    endif
+  enddo
+
+  ! --- GUARD: Check for ambiguous (duplicate) filenames among active slots ---
+  do n = 1, nfreq
+    if (requested(n)) then
+      tmpname = rootnames(n)
+      do m = n + 1, nfreq
+        if (requested(m)) then
+          if (tmpname == rootnames(m)) then
+            ierr = 1
+            errmsg = "MOM_outputlog: Ambiguous fname_root '" // trim(tmpname) // &
+                 "'. Multiple active output streams cannot share the same filename."
+            return
           endif
         endif
       enddo
     endif
   enddo
-
-  !? force default 6h, maybe not
-  if (.not. any(cf%requested)) then
-    do n = 1,nfreq
-      if (cf(n)%opt_n == 6) then
-        cf(n)%requested = .true.
-        cf(n)%type = 'avg'
-      endif
-    enddo
-  endif
-end subroutine readnml
+end function setrootname
 
 !> Determine if the netcdf output file is complete
 !!
@@ -134,7 +260,7 @@ logical function file_is_complete(comm, fname, chk4size, createsize, rc) result(
   integer :: nlen(1), fsize(1), ierr
   !----------------------------------------------------------------------------
 
-  rc = ESMF_SUCCESS
+  rc = 0
 
   filecomplete = .false.
   nlen(1) = nf90_fill_int
@@ -150,12 +276,12 @@ logical function file_is_complete(comm, fname, chk4size, createsize, rc) result(
 
   call MPI_Bcast(nlen, 1, MPI_INTEGER, root_pe(), comm, ierr)
   if (ierr /= MPI_SUCCESS) then
-    rc = ESMF_FAILURE
+    rc = -1
     return
   endif
   call MPI_Bcast(fsize, 1, MPI_INTEGER, root_pe(), comm, ierr)
   if (ierr /= MPI_SUCCESS) then
-    rc = ESMF_FAILURE
+    rc = -1
     return
   endif
 
@@ -188,10 +314,11 @@ end function get_unlimited_len
 !! @param[in]  MyTime   an ESMF_Time object
 !! @param[out] rc       return code
 !! @return              16-character formatted time string (YYYY_MM_DD_HH_MM)
-character(len=16) function get_timestr(MyTime, rc) result(timestr)
+function get_timestr(MyTime, rc) result(timestr)
   type(ESMF_Time), intent(in)  :: MyTime
   integer,         intent(out) :: rc
 
+  character(len=16) :: timestr
   integer :: year, month, day, hour, minute
   !----------------------------------------------------------------------------
 
@@ -208,12 +335,13 @@ end function get_timestr
 !! @param[in]  nextTime   an ESMF_Time object
 !! @param[out] rc         return code
 !! @return                40-character string
-character(len=40) function get_importexport(currTime, nextTime, rc) result(importexport)
+function get_importexport(currTime, nextTime, rc) result(importexport)
 
   type(ESMF_Time), intent(in)  :: currTime, nextTime
   integer,         intent(out) :: rc
 
   character(len=19) :: import_timestr, export_timestr
+  character(len=40) :: importexport
   !----------------------------------------------------------------------------
 
   rc = ESMF_SUCCESS
