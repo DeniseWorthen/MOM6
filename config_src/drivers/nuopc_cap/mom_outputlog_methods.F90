@@ -40,9 +40,9 @@ public :: file_is_complete, get_unlimited_len, get_timestr, get_importexport
 public :: readnml, debug_info, nf90_err
 public :: outputlog_type
 
-#ifdef UNIT_TESTING
+!#ifdef UNIT_TESTING
 public :: setrequest, settype, setrootname
-#endif
+!#endif
 contains
 
 !> Read nml options to configure output logging
