@@ -40,6 +40,9 @@ public :: file_is_complete, get_unlimited_len, get_timestr, get_importexport
 public :: readnml, debug_info, nf90_err
 public :: outputlog_type
 
+#ifdef UNIT_TESTING
+public :: setrequest, settype, setrootname
+#endif
 contains
 
 !> Read nml options to configure output logging
@@ -69,9 +72,12 @@ subroutine readnml(fname, cf, debug, errmsg, rc)
   rc = 0
   errmsg = ''
   nfreq = size(cf)
-  allocate(output_fh(1:nfreq), source = 0)
-  allocate(output_type(1:nfreq), source = cf(1:nfreq)%type)
-  allocate(output_rootname(1:nfreq), source = cf(1:nfreq)%fnameroot)
+  allocate(output_fh(1:nfreq))
+  allocate(output_type(1:nfreq))
+  allocate(output_rootname(1:nfreq))
+  output_fh(:) = 0
+  output_type(:) = cf(1:nfreq)%type
+  output_rootname(:) = cf(1:nfreq)%fnameroot
   output_debug = .false.
 
   inquire(file=trim(fname), exist=existflag)
@@ -165,8 +171,8 @@ function settype(validfreqs, requested, output_fh, output_type, errmsg, ierr) re
   errmsg = ''
   filetypes = ''
 
-  do n = 1, nfreq
-    reqval = trim(adjustl(output_type(n)))
+  do m = 1, nfreq
+    reqval = trim(adjustl(output_type(m)))
     if (reqval /= '') then
       if (reqval /= 'average' .and. reqval /= 'none') then
         ierr = 1
