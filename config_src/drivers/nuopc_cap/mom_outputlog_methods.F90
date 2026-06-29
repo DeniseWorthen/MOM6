@@ -5,7 +5,7 @@
 !> This module contains a set of subroutines that are required by the UFS
 !> outputlog feature
 
-module outputlog_methods
+module mom_outputlog_methods
 
 use ESMF,              only : ESMF_Alarm, ESMF_TimeInterval
 use ESMF,              only : ESMF_SUCCESS, ESMF_Failure, ESMF_Time, ESMF_TimeGet
@@ -457,4 +457,4 @@ subroutine nf90_err(ierr, string)
     stop 99
   endif
 end subroutine nf90_err
-end module outputlog_methods
+end module mom_outputlog_methods

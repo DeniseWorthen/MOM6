@@ -49,9 +49,9 @@ use ESMF                  , only : operator(*), operator(+), operator(-), operat
 use MOM_cap_methods       , only : ChkErr
 use MOM_cap_time          , only : AlarmInit
 use shr_is_restart_fh_mod , only : log_restart_fh
-use outputlog_methods     , only : file_is_complete, get_unlimited_len, get_timestr, get_importexport
-use outputlog_methods     , only : readnml, debug_info, nf90_err
-use outputlog_methods     , only : outputlog_type
+use mom_outputlog_methods , only : file_is_complete, get_unlimited_len, get_timestr, get_importexport
+use mom_outputlog_methods , only : readnml, debug_info, nf90_err
+use mom_outputlog_methods , only : outputlog_type
 use mpi_f08               , only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
 use netcdf
 
