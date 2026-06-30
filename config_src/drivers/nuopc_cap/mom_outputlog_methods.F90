@@ -21,7 +21,7 @@ type :: outputlog_type
   character(len=14)       :: alarm_name
   integer                 :: opt_n
   logical                 :: requested
-  character(len=7)        :: timereduction
+  character(len=7)        :: timereduce
   character(len=12)       :: fnameroot
   logical                 :: chkfile_nextAdvance
   logical                 :: use_filesize
@@ -76,7 +76,7 @@ subroutine readnml(fname, cf, debug, errmsg, rc)
   allocate(output_type(1:nfreq))
   allocate(output_rootname(1:nfreq))
   output_fh(:) = 0
-  output_type(:) = cf(1:nfreq)%timereduction
+  output_type(:) = cf(1:nfreq)%timereduce
   output_rootname(:) = cf(1:nfreq)%fnameroot
   output_debug = .false.
 
@@ -99,7 +99,7 @@ subroutine readnml(fname, cf, debug, errmsg, rc)
   cf%requested = setrequest(cf%opt_n, output_fh, errmsg, ierr)
   if (ierr /= 0) return
 
-  cf%timereduction = settype(cf%opt_n, cf%requested, output_fh, output_type, errmsg, ierr)
+  cf%timereduce = settype(cf%opt_n, cf%requested, output_fh, output_type, errmsg, ierr)
   if (ierr /= 0) return
 
   cf%fnameroot = setrootname(cf%opt_n, cf%requested, output_fh, output_rootname, errmsg, ierr)
@@ -163,6 +163,7 @@ function settype(validfreqs, requested, output_fh, output_type, errmsg, ierr) re
   integer,          intent(out) :: ierr
 
   integer :: n, m, nfreq
+  integer :: n_requested, n_nonblanktypes
   character(len=7) :: reqval
   character(len=7) :: filetypes(size(validfreqs))
 
@@ -183,6 +184,14 @@ function settype(validfreqs, requested, output_fh, output_type, errmsg, ierr) re
   enddo
 
   if (.not. any(requested)) return
+
+  do n = 1, nfreq
+    if (.not. requested(n) .and. len_trim(output_type(n)) > 0) then
+      ierr = 1
+      errmsg = "MOM_outputlog: File type keyword provided for an inactive frequency slot."
+      return
+    endif
+  enddo
 
   do n = 1, nfreq
     if (requested(n)) then
@@ -241,8 +250,8 @@ function setrootname(validfreqs, requested, output_fh, output_rootname, errmsg, 
               endif
               rootnames(n) = reqval
             endif
-
             exit
+
           endif
         enddo
       endif
@@ -287,6 +296,23 @@ function setrootname(validfreqs, requested, output_fh, output_rootname, errmsg, 
           endif
         endif
       enddo
+    endif
+  enddo
+
+  do n = 1, nfreq
+    print *,'XXX ',n,requested(n),output_rootname(n),len_trim(output_rootname(n))
+    if (requested(n) .and. len_trim(output_rootname(n)) > 12) then
+      ierr = 1
+      write(errmsg, '(A, I2)') 'MOM_outputlog: Rootname too long '
+      return
+    endif
+  enddo
+
+  do n = 1, nfreq
+    if (.not. requested(n) .and. len_trim(output_rootname(n)) > 0) then
+      ierr = 1
+      write(errmsg, '(A, I2)') 'MOM_outputlog: Rootname provided for inactive slot ', n
+      return
     endif
   enddo
 
