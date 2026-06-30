@@ -203,7 +203,7 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
     olog(n)%alarm_name          = 'output_alarm'//trim(chour)
     olog(n)%opt_n               = freq(n)
     olog(n)%requested           = .false.
-    olog(n)%type                = ''
+    olog(n)%timereduction       = ''
     olog(n)%fnameroot           = ''
     olog(n)%chkfile_nextAdvance = .false.
     olog(n)%use_filesize        = .false.
@@ -248,7 +248,7 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
     enddo
     do n = 1,n_freq
       if (olog(n)%requested) print '(A,i6,A)',trim(subname)//' output requested: hours(freq), type  ',&
-           olog(n)%opt_n,'  '//olog(n)%type
+           olog(n)%opt_n,'  '//olog(n)%timereduction
     enddo
   endif
 

@@ -21,7 +21,7 @@ type :: outputlog_type
   character(len=14)       :: alarm_name
   integer                 :: opt_n
   logical                 :: requested
-  character(len=7)        :: type
+  character(len=7)        :: timereduction
   character(len=12)       :: fnameroot
   logical                 :: chkfile_nextAdvance
   logical                 :: use_filesize
@@ -76,7 +76,7 @@ subroutine readnml(fname, cf, debug, errmsg, rc)
   allocate(output_type(1:nfreq))
   allocate(output_rootname(1:nfreq))
   output_fh(:) = 0
-  output_type(:) = cf(1:nfreq)%type
+  output_type(:) = cf(1:nfreq)%timereduction
   output_rootname(:) = cf(1:nfreq)%fnameroot
   output_debug = .false.
 
@@ -99,7 +99,7 @@ subroutine readnml(fname, cf, debug, errmsg, rc)
   cf%requested = setrequest(cf%opt_n, output_fh, errmsg, ierr)
   if (ierr /= 0) return
 
-  cf%type = settype(cf%opt_n, cf%requested, output_fh, output_type, errmsg, ierr)
+  cf%timereduction = settype(cf%opt_n, cf%requested, output_fh, output_type, errmsg, ierr)
   if (ierr /= 0) return
 
   cf%fnameroot = setrootname(cf%opt_n, cf%requested, output_fh, output_rootname, errmsg, ierr)
