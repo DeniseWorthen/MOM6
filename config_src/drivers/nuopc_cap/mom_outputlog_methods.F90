@@ -9,8 +9,6 @@ module mom_outputlog_methods
 
 use ESMF,              only : ESMF_Alarm, ESMF_TimeInterval
 use ESMF,              only : ESMF_SUCCESS, ESMF_Failure, ESMF_Time, ESMF_TimeGet
-use MOM_coms_infra,    only : root_pe
-use MOM_error_handler, only : is_root_pe, MOM_error, FATAL
 use MOM_cap_methods,   only : ChkErr
 use mpi_f08,           only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
 use netcdf
@@ -22,7 +20,8 @@ type :: outputlog_type
   integer                 :: opt_n
   logical                 :: requested
   character(len=7)        :: timereduce
-  character(len=12)       :: fnameroot
+  character(len=12)       :: fnameprefix
+  character(len=12)       :: fnamesuffix
   logical                 :: chkfile_nextAdvance
   logical                 :: use_filesize
   character(len=256)      :: filename
@@ -40,9 +39,8 @@ public :: file_is_complete, get_unlimited_len, get_timestr, get_importexport
 public :: readnml, debug_info, nf90_err
 public :: outputlog_type
 
-!#ifdef UNIT_TESTING
-public :: setrequest, settype, setrootname
-!#endif
+public :: setrequest, settype, setprefix
+
 contains
 
 !> Read nml options to configure output logging
@@ -61,24 +59,24 @@ subroutine readnml(fname, cf, debug, errmsg, rc)
   integer,              intent(out)   :: rc
 
   integer :: n, nn, nfreq, iounit, ierr
-  logical :: existflag, output_debug
+  logical :: existflag, nml_debug
 
-  integer, allocatable :: output_fh(:)
-  character(len=7), allocatable :: output_type(:)
-  character(len=24), allocatable :: output_rootname(:)
+  integer, allocatable :: nml_fh(:)
+  character(len=7), allocatable :: nml_type(:)
+  character(len=24), allocatable :: nml_fnameprefix(:)
 
-  namelist / MOM_outputlog_nml/ output_fh, output_rootname, output_type, output_debug
+  namelist / MOM_outputlog_nml/ nml_fh, nml_fnameprefix, nml_type, nml_debug
 
   rc = 0
   errmsg = ''
   nfreq = size(cf)
-  allocate(output_fh(1:nfreq))
-  allocate(output_type(1:nfreq))
-  allocate(output_rootname(1:nfreq))
-  output_fh(:) = 0
-  output_type(:) = cf(1:nfreq)%timereduce
-  output_rootname(:) = cf(1:nfreq)%fnameroot
-  output_debug = .false.
+  allocate(nml_fh(1:nfreq))
+  allocate(nml_type(1:nfreq))
+  allocate(nml_fnameprefix(1:nfreq))
+  nml_fh(:) = 0
+  nml_type(:) = cf(1:nfreq)%timereduce
+  nml_fnameprefix(:) = cf(1:nfreq)%fnameprefix
+  nml_debug = .false.
 
   inquire(file=trim(fname), exist=existflag)
   if (.not. existflag) then
@@ -96,13 +94,13 @@ subroutine readnml(fname, cf, debug, errmsg, rc)
     endif
   endif
 
-  cf%requested = setrequest(cf%opt_n, output_fh, errmsg, ierr)
+  cf%requested = setrequest(cf%opt_n, nml_fh, errmsg, ierr)
   if (ierr /= 0) return
 
-  cf%timereduce = settype(cf%opt_n, cf%requested, output_fh, output_type, errmsg, ierr)
+  cf%timereduce = settype(cf%opt_n, cf%requested, nml_fh, nml_type, errmsg, ierr)
   if (ierr /= 0) return
 
-  cf%fnameroot = setrootname(cf%opt_n, cf%requested, output_fh, output_rootname, errmsg, ierr)
+  cf%fnameprefix = setprefix(cf%opt_n, cf%requested, nml_fh, nml_fnameprefix, errmsg, ierr)
   if (ierr /= 0) return
 
 end subroutine readnml
@@ -153,12 +151,12 @@ function setrequest(validfreqs, requested_fh, errmsg, ierr) result(is_requested)
 
 end function setrequest
 !> TODO: doxy
-function settype(validfreqs, requested, output_fh, output_type, errmsg, ierr) result(filetypes)
+function settype(validfreqs, requested, nml_fh, nml_type, errmsg, ierr) result(filetypes)
 
   integer,          intent(in)  :: validfreqs(:)
   logical,          intent(in)  :: requested(:)
-  integer,          intent(in)  :: output_fh(:)
-  character(len=*), intent(in)  :: output_type(:)
+  integer,          intent(in)  :: nml_fh(:)
+  character(len=*), intent(in)  :: nml_type(:)
   character(len=*), intent(out) :: errmsg
   integer,          intent(out) :: ierr
 
@@ -173,11 +171,11 @@ function settype(validfreqs, requested, output_fh, output_type, errmsg, ierr) re
   filetypes = ''
 
   do m = 1, nfreq
-    reqval = trim(adjustl(output_type(m)))
+    reqval = trim(adjustl(nml_type(m)))
     if (reqval /= '') then
       if (reqval /= 'average' .and. reqval /= 'none') then
         ierr = 1
-        errmsg = "MOM_outputlog: Invalid output_type '"// trim(reqval)// "'. Must be exactly 'average' or 'none'"
+        errmsg = "MOM_outputlog: Invalid nml_type '"// trim(reqval)// "'. Must be exactly 'average' or 'none'"
         return
       endif
     endif
@@ -186,7 +184,7 @@ function settype(validfreqs, requested, output_fh, output_type, errmsg, ierr) re
   if (.not. any(requested)) return
 
   do n = 1, nfreq
-    if (.not. requested(n) .and. len_trim(output_type(n)) > 0) then
+    if (.not. requested(n) .and. len_trim(nml_type(n)) > 0) then
       ierr = 1
       errmsg = "MOM_outputlog: File type keyword provided for an inactive frequency slot."
       return
@@ -195,9 +193,9 @@ function settype(validfreqs, requested, output_fh, output_type, errmsg, ierr) re
 
   do n = 1, nfreq
     if (requested(n)) then
-      do m = 1, size(output_fh)
-        if (output_fh(m) == validfreqs(n)) then
-          reqval = trim(adjustl(output_type(m)))
+      do m = 1, size(nml_fh)
+        if (nml_fh(m) == validfreqs(n)) then
+          reqval = trim(adjustl(nml_type(m)))
           if (reqval == 'average' .or. reqval == 'none') then
             filetypes(n) = reqval
           else
@@ -211,44 +209,44 @@ function settype(validfreqs, requested, output_fh, output_type, errmsg, ierr) re
 
 end function settype
 !> TODO: doxy
-function setrootname(validfreqs, requested, output_fh, output_rootname, errmsg, ierr) result(rootnames)
+function setprefix(validfreqs, requested, nml_fh, nml_fnameprefix, errmsg, ierr) result(fileprefixes)
 
   integer,          intent(in)  :: validfreqs(:)
   logical,          intent(in)  :: requested(:)
-  integer,          intent(in)  :: output_fh(:)
-  character(len=*), intent(in)  :: output_rootname(:)
+  integer,          intent(in)  :: nml_fh(:)
+  character(len=*), intent(in)  :: nml_fnameprefix(:)
   character(len=*), intent(out) :: errmsg
   integer,          intent(out) :: ierr
 
   integer :: n, m, nfreq, n_active
   character(len=12) :: reqval
-  character(len=12) :: rootnames(size(validfreqs))
+  character(len=12) :: fileprefixes(size(validfreqs))
 
   nfreq = size(validfreqs)
   ierr = 0
   errmsg = ''
-  rootnames = ''
+  fileprefixes = ''
 
   n_active = count(requested)
   if (n_active == 0) return
 
-  ! default rootname == 'ocn' for any single freq run
+  ! default file prefix == 'ocn' for any single freq run
   if (n_active == 1) then
     do n = 1, nfreq
       if (requested(n)) then
-        do m = 1, size(output_fh)
-          if (output_fh(m) == validfreqs(n)) then
-            reqval = trim(adjustl(output_rootname(m)))
+        do m = 1, size(nml_fh)
+          if (nml_fh(m) == validfreqs(n)) then
+            reqval = trim(adjustl(nml_fnameprefix(m)))
 
             if (reqval == '') then
-              rootnames(n) = 'ocn'
+              fileprefixes(n) = 'ocn'
             else
-              if (len_trim(output_rootname(m)) > 12) then
+              if (len_trim(nml_fnameprefix(m)) > 12) then
                 ierr = 1
-                errmsg = "MOM_outputlog: output_rootname exceeds 12 characters."
+                errmsg = "MOM_outputlog: nml_fnameprefix exceeds 12 characters."
                 return
               endif
-              rootnames(n) = reqval
+              fileprefixes(n) = reqval
             endif
             exit
 
@@ -259,38 +257,38 @@ function setrootname(validfreqs, requested, output_fh, output_rootname, errmsg, 
     return
   endif
 
-  ! multi-freq output; must provide rootnames
+  ! multi-freq output; must provide fileprefixes
   do n = 1, nfreq
     if (requested(n)) then
-      do m = 1, size(output_fh)
-        if (output_fh(m) == validfreqs(n)) then
-          reqval = trim(adjustl(output_rootname(m)))
+      do m = 1, size(nml_fh)
+        if (nml_fh(m) == validfreqs(n)) then
+          reqval = trim(adjustl(nml_fnameprefix(m)))
           if (reqval == '') then
             ierr = 1
             write(errmsg, '(A, I0, A)') "MOM_outputlog: Multiple frequencies requested," // &
-                 " but output_rootname is missing for frequency ", validfreqs(n), "h."
+                 " but nml_fnameprefix is missing for frequency ", validfreqs(n), "h."
             return
           endif
-          if (len_trim(output_rootname(m)) > 12) then
+          if (len_trim(nml_fnameprefix(m)) > 12) then
             ierr = 1
-            errmsg = "MOM_outputlog: output_rootname exceeds 12 characters."
+            errmsg = "MOM_outputlog: nml_fnameprefix exceeds 12 characters."
             return
           endif
-          rootnames(n) = reqval
+          fileprefixes(n) = reqval
           exit
         endif
       enddo
     endif
   enddo
 
-  ! multi-freq output: must provide unique rootnames
+  ! multi-freq output: must provide unique fileprefixes
   do n = 1, nfreq
     if (requested(n)) then
       do m = n + 1, nfreq
         if (requested(m)) then
-          if (rootnames(n) == rootnames(m)) then
+          if (fileprefixes(n) == fileprefixes(m)) then
             ierr = 1
-            errmsg = "MOM_outputlog: Ambiguous output_rootname '" // trim(rootnames(n)) // &
+            errmsg = "MOM_outputlog: Ambiguous nml_fnameprefix '" // trim(fileprefixes(n)) // &
                      "'. Multiple active output streams cannot share the same filename root."
             return
           endif
@@ -300,8 +298,8 @@ function setrootname(validfreqs, requested, output_fh, output_rootname, errmsg, 
   enddo
 
   do n = 1, nfreq
-    print *,'XXX ',n,requested(n),output_rootname(n),len_trim(output_rootname(n))
-    if (requested(n) .and. len_trim(output_rootname(n)) > 12) then
+    print *,'XXX ',n,requested(n),nml_fnameprefix(n),len_trim(nml_fnameprefix(n))
+    if (requested(n) .and. len_trim(nml_fnameprefix(n)) > 12) then
       ierr = 1
       write(errmsg, '(A, I2)') 'MOM_outputlog: Rootname too long '
       return
@@ -309,14 +307,14 @@ function setrootname(validfreqs, requested, output_fh, output_rootname, errmsg, 
   enddo
 
   do n = 1, nfreq
-    if (.not. requested(n) .and. len_trim(output_rootname(n)) > 0) then
+    if (.not. requested(n) .and. len_trim(nml_fnameprefix(n)) > 0) then
       ierr = 1
       write(errmsg, '(A, I2)') 'MOM_outputlog: Rootname provided for inactive slot ', n
       return
     endif
   enddo
 
-end function setrootname
+end function setprefix
 
 !> Determine if the netcdf output file is complete
 !!
@@ -326,9 +324,11 @@ end function setrootname
 !! @param[in]   createsize    the filesize at creation
 !! @param[out]  rc            return code
 !! @return                    logical flag, true if the file is complete
-logical function file_is_complete(comm, fname, chk4size, createsize, rc) result(filecomplete)
+logical function file_is_complete(comm, isroot, rootpe, fname, chk4size, createsize, rc) result(filecomplete)
 
   type(MPI_Comm),   intent(in)  :: comm
+  logical,          intent(in)  :: isroot
+  integer,          intent(in)  :: rootpe
   character(len=*), intent(in)  :: fname
   logical,          intent(in)  :: chk4size
   integer,          intent(in)  :: createsize
@@ -344,7 +344,7 @@ logical function file_is_complete(comm, fname, chk4size, createsize, rc) result(
   nlen(1) = nf90_fill_int
   fsize(1) = nf90_fill_int
 
-  if (is_root_pe()) then
+  if (isroot) then
     inquire(file=fname, exist=existflag)
     if (existflag) then
       nlen(1) = get_unlimited_len(trim(fname))
@@ -352,12 +352,12 @@ logical function file_is_complete(comm, fname, chk4size, createsize, rc) result(
     endif
   endif
 
-  call MPI_Bcast(nlen, 1, MPI_INTEGER, root_pe(), comm, ierr)
+  call MPI_Bcast(nlen, 1, MPI_INTEGER, rootpe, comm, ierr)
   if (ierr /= MPI_SUCCESS) then
     rc = -1
     return
   endif
-  call MPI_Bcast(fsize, 1, MPI_INTEGER, root_pe(), comm, ierr)
+  call MPI_Bcast(fsize, 1, MPI_INTEGER, rootpe, comm, ierr)
   if (ierr /= MPI_SUCCESS) then
     rc = -1
     return

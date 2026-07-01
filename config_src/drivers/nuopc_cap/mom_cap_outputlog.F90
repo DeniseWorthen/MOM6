@@ -204,7 +204,8 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
     olog(n)%opt_n               = freq(n)
     olog(n)%requested           = .false.
     olog(n)%timereduce          = ''
-    olog(n)%fnameroot           = ''
+    olog(n)%fnameprefix         = ''
+    olog(n)%fnamesuffix         = ''
     olog(n)%chkfile_nextAdvance = .false.
     olog(n)%use_filesize        = .false.
     olog(n)%filename            = ''
@@ -345,7 +346,7 @@ subroutine outputlog_run(mclock, atStopTime, rc)
 
       if (olog(n)%chkfile_nextAdvance) then
         fname = trim(olog(n)%filename)
-        filecomplete = file_is_complete(mpicomm, fname, olog(n)%use_filesize, olog(n)%createsize, rc)
+        filecomplete = file_is_complete(mpicomm, is_root_pe(), root_pe(), fname, olog(n)%use_filesize, olog(n)%createsize, rc)
         rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -373,7 +374,7 @@ subroutine outputlog_run(mclock, atStopTime, rc)
         write(olog(n)%filename,'(A)')trim(outputdir)//'ocn_'//trim(timestr)//'.nc'
 
         fname = trim(olog(n)%filename)
-        filecomplete = file_is_complete(mpicomm, fname, olog(n)%use_filesize, olog(n)%createsize, rc)
+        filecomplete = file_is_complete(mpicomm, is_root_pe(), root_pe(), fname, olog(n)%use_filesize, olog(n)%createsize, rc)
         rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
