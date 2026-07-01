@@ -170,6 +170,8 @@ function settype(validfreqs, requested, nml_fh, nml_type, errmsg, ierr) result(f
   errmsg = ''
   filetypes = ''
 
+  if (.not. any(requested)) return
+
   do m = 1, nfreq
     reqval = trim(adjustl(nml_type(m)))
     if (reqval /= '') then
@@ -181,10 +183,8 @@ function settype(validfreqs, requested, nml_fh, nml_type, errmsg, ierr) result(f
     endif
   enddo
 
-  if (.not. any(requested)) return
-
   do n = 1, nfreq
-    if (.not. requested(n) .and. len_trim(nml_type(n)) > 0) then
+    if (nml_fh(n) == 0 .and. len_trim(nml_type(n)) > 0) then
       ierr = 1
       errmsg = "MOM_outputlog: File type keyword provided for an inactive frequency slot."
       return
@@ -229,6 +229,14 @@ function setprefix(validfreqs, requested, nml_fh, nml_fnameprefix, errmsg, ierr)
 
   n_active = count(requested)
   if (n_active == 0) return
+
+  do n = 1, nfreq
+    if (nml_fh(n) == 0 .and. len_trim(nml_fnameprefix(n)) > 0) then
+      ierr = 1
+      write(errmsg, '(A, I2)') 'MOM_outputlog: filename prefix provided for inactive slot ', n
+      return
+    endif
+  enddo
 
   ! default file prefix == 'ocn' for any single freq run
   if (n_active == 1) then
@@ -294,23 +302,6 @@ function setprefix(validfreqs, requested, nml_fh, nml_fnameprefix, errmsg, ierr)
           endif
         endif
       enddo
-    endif
-  enddo
-
-  do n = 1, nfreq
-    print *,'XXX ',n,requested(n),nml_fnameprefix(n),len_trim(nml_fnameprefix(n))
-    if (requested(n) .and. len_trim(nml_fnameprefix(n)) > 12) then
-      ierr = 1
-      write(errmsg, '(A, I2)') 'MOM_outputlog: Rootname too long '
-      return
-    endif
-  enddo
-
-  do n = 1, nfreq
-    if (.not. requested(n) .and. len_trim(nml_fnameprefix(n)) > 0) then
-      ierr = 1
-      write(errmsg, '(A, I2)') 'MOM_outputlog: Rootname provided for inactive slot ', n
-      return
     endif
   enddo
 

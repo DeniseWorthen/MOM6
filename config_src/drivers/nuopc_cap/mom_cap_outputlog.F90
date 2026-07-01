@@ -103,35 +103,20 @@ integer, parameter, dimension(n_freq) :: freq = (/1, 3, 6, 24/)
 ! When a file is determined to be complete, a log file is recorded containing the forecast hour, the valid
 ! time, the name of the output file and the last completed restart file.
 
+type(outputlog_type)    :: olog(n_freq)
+
 type(ESMF_VM)           :: vm
 type(ESMF_TimeInterval) :: tincrement
 type(ESMF_Time)         :: lastrestart
+type(MPI_Comm)          :: mpicomm
 
-! type :: outputlog_type
-!   character(len=14)       :: alarm_name
-!   integer                 :: opt_n
-!   logical                 :: requested
-!   character(len=4)        :: type
-!   logical                 :: chkfile_nextAdvance
-!   logical                 :: use_filesize
-!   character(len=256)      :: filename
-!   integer                 :: createsize
-!   type(ESMF_Alarm)        :: alarm
-!   type(ESMF_TimeInterval) :: fhoffset
-!   type(ESMF_TimeInterval) :: filename_fhoffset
-!   type(ESMF_Time)         :: time_lastrestart
-! end type outputlog_type
-
-type(outputlog_type) :: olog(n_freq)
-
-type(MPI_Comm)     :: mpicomm
-integer            :: toffset
-integer            :: nfiles
-logical            :: debug
-logical            :: existflag
-character(len=256) :: restartdir
-character(len=256) :: outputdir
-character(len=256) :: errmsg
+integer                 :: toffset
+integer                 :: nfiles
+logical                 :: debug
+logical                 :: existflag
+character(len=256)      :: restartdir
+character(len=256)      :: outputdir
+character(len=256)      :: errmsg
 character(len=*), parameter :: u_FILE_u = &
      __FILE__
 
