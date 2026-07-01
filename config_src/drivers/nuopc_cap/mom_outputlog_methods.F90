@@ -21,7 +21,7 @@ type :: outputlog_type
   logical                 :: requested
   character(len=7)        :: timereduce
   character(len=12)       :: fnameprefix
-  character(len=12)       :: fnamesuffix
+  character(len=4)        :: fnamesuffix
   logical                 :: chkfile_nextAdvance
   logical                 :: use_filesize
   character(len=256)      :: filename
@@ -59,24 +59,24 @@ subroutine readnml(fname, cf, debug, errmsg, rc)
   integer,              intent(out)   :: rc
 
   integer :: n, nn, nfreq, iounit, ierr
-  logical :: existflag, nml_debug
+  logical :: existflag, outputlog_debug
 
-  integer, allocatable :: nml_fh(:)
-  character(len=7), allocatable :: nml_type(:)
-  character(len=24), allocatable :: nml_fnameprefix(:)
+  integer,           allocatable :: outputlog_fh(:)
+  character(len=7),  allocatable :: outputlog_treduce(:)
+  character(len=24), allocatable :: outputlog_fnameprefix(:)
 
-  namelist / MOM_outputlog_nml/ nml_fh, nml_fnameprefix, nml_type, nml_debug
+  namelist / MOM_outputlog_nml/ outputlog_fh, outputlog_fnameprefix, outputlog_treduce, outputlog_debug
 
   rc = 0
   errmsg = ''
   nfreq = size(cf)
-  allocate(nml_fh(1:nfreq))
-  allocate(nml_type(1:nfreq))
-  allocate(nml_fnameprefix(1:nfreq))
-  nml_fh(:) = 0
-  nml_type(:) = cf(1:nfreq)%timereduce
-  nml_fnameprefix(:) = cf(1:nfreq)%fnameprefix
-  nml_debug = .false.
+  allocate(outputlog_fh(1:nfreq))
+  allocate(outputlog_treduce(1:nfreq))
+  allocate(outputlog_fnameprefix(1:nfreq))
+  outputlog_fh(:) = 0
+  outputlog_treduce(:) = cf(1:nfreq)%timereduce
+  outputlog_fnameprefix(:) = cf(1:nfreq)%fnameprefix
+  debug = .false.
 
   inquire(file=trim(fname), exist=existflag)
   if (.not. existflag) then
@@ -94,13 +94,15 @@ subroutine readnml(fname, cf, debug, errmsg, rc)
     endif
   endif
 
-  cf%requested = setrequest(cf%opt_n, nml_fh, errmsg, ierr)
+  debug = outputlog_debug
+
+  cf%requested = setrequest(cf%opt_n, outputlog_fh, errmsg, ierr)
   if (ierr /= 0) return
 
-  cf%timereduce = settype(cf%opt_n, cf%requested, nml_fh, nml_type, errmsg, ierr)
+  cf%timereduce = settype(cf%opt_n, cf%requested, outputlog_fh, outputlog_treduce, errmsg, ierr)
   if (ierr /= 0) return
 
-  cf%fnameprefix = setprefix(cf%opt_n, cf%requested, nml_fh, nml_fnameprefix, errmsg, ierr)
+  cf%fnameprefix = setprefix(cf%opt_n, cf%requested, outputlog_fh, outputlog_fnameprefix, errmsg, ierr)
   if (ierr /= 0) return
 
 end subroutine readnml

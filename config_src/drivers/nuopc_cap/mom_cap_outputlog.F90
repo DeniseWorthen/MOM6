@@ -36,7 +36,7 @@ use MOM_coms_infra        , only : root_pe
 use MOM_error_handler     , only : is_root_pe, MOM_error, FATAL
 use MOM_get_input         , only : get_MOM_input, directories
 use MOM_grid              , only : ocean_grid_type
-use mpp_domains_mod       , only : domain2d, mpp_get_layout, mpp_get_io_domain
+use mpp_domains_mod       , only : mpp_get_io_domain_layout
 use NUOPC                 , only : NUOPC_CompAttributeGet
 use ESMF                  , only : ESMF_GridComp, ESMF_GridCompGet, ESMF_VM, ESMF_VMGet
 use ESMF                  , only : ESMF_Time, ESMF_Clock, ESMF_ClockGet, ESMF_Alarm, ESMF_AlarmSet
@@ -138,7 +138,6 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
   type(ESMF_Time)         :: mcurrTime
   type(ESMF_TimeInterval) :: alarmoffset
   type(directories)       :: dirs
-  type(domain2d), pointer :: io_domain => null()
   logical                 :: isPresent, isSet
   integer                 :: n, int_mpic, io_layout(2)
   integer                 :: year, month, day, hour
@@ -159,13 +158,8 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
   restartdir = trim(dirs%restart_output_dir)
   outputdir = trim(dirs%output_directory)
 
-  io_domain => mpp_get_io_domain(ocean_grid%Domain%mpp_domain)
-  if (associated(io_domain)) then
-    call mpp_get_layout(io_domain, io_layout)
-    nfiles = io_layout(1) * io_layout(2)
-  else
-    nfiles = 1
-  endif
+  io_layout = mpp_get_io_domain_layout(ocean_grid%Domain%mpp_domain)
+  nfiles = io_layout(1) * io_layout(2)
 
   call ESMF_ClockGet(mclock, currTime=mcurrTime, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -190,7 +184,6 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
     olog(n)%requested           = .false.
     olog(n)%timereduce          = ''
     olog(n)%fnameprefix         = ''
-    olog(n)%fnamesuffix         = ''
     olog(n)%chkfile_nextAdvance = .false.
     olog(n)%use_filesize        = .false.
     olog(n)%filename            = ''
@@ -204,6 +197,12 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
       alarmoffset = toffset*60*tincrement
     else
       alarmoffset = 0*tincrement
+    endif
+
+    if (nfiles == 1) then
+      olog(n)%fnamesuffix         = ''
+    else
+      olog(n)%fnamesuffix         = '.000'
     endif
 
     call AlarmInit(mclock,                  &
@@ -293,9 +292,9 @@ subroutine outputlog_run(mclock, atStopTime, rc)
 
         timestr = get_timestr(nextTime-olog(n)%filename_fhoffset, rc=rc)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
-        ! function to create filename based on fname root,timestring,nfiles
-        write(olog(n)%filename,'(A)')trim(outputdir)//'ocn_'//trim(timestr)//'.nc'
+        olog(n)%filename = trim(outputdir)//trim(olog(n)%fnameprefix)//trim(timestr)//'.nc'//trim(olog(n)%fnamesuffix)
 
+        ! function to check file state; returns nlen(1) on
         fname = trim(olog(n)%filename)
         if (is_root_pe()) then
           inquire(file=fname, exist=existflag)
@@ -331,7 +330,8 @@ subroutine outputlog_run(mclock, atStopTime, rc)
 
       if (olog(n)%chkfile_nextAdvance) then
         fname = trim(olog(n)%filename)
-        filecomplete = file_is_complete(mpicomm, is_root_pe(), root_pe(), fname, olog(n)%use_filesize, olog(n)%createsize, rc)
+        filecomplete = file_is_complete(mpicomm, is_root_pe(), root_pe(), fname, &
+             olog(n)%use_filesize, olog(n)%createsize, rc)
         rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -356,10 +356,11 @@ subroutine outputlog_run(mclock, atStopTime, rc)
 
         timestr = get_timestr(prevring-30*freq(n)*tincrement, rc=rc)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
-        write(olog(n)%filename,'(A)')trim(outputdir)//'ocn_'//trim(timestr)//'.nc'
+        olog(n)%filename = trim(outputdir)//trim(olog(n)%fnameprefix)//trim(timestr)//'.nc'//trim(olog(n)%fnamesuffix)
 
         fname = trim(olog(n)%filename)
-        filecomplete = file_is_complete(mpicomm, is_root_pe(), root_pe(), fname, olog(n)%use_filesize, olog(n)%createsize, rc)
+        filecomplete = file_is_complete(mpicomm, is_root_pe(), root_pe(), fname, &
+             olog(n)%use_filesize, olog(n)%createsize, rc)
         rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
