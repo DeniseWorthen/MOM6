@@ -15,29 +15,32 @@ use netcdf
 
 implicit none; private
 
-type :: outputlog_type
+type :: outputlog_config_type
   character(len=14)       :: alarm_name
   integer                 :: opt_n
   logical                 :: requested
   character(len=7)        :: timereduce
   character(len=12)       :: fnameprefix
   character(len=4)        :: fnamesuffix
+  type(ESMF_Alarm)        :: alarm
+  type(ESMF_TimeInterval) :: fhoffset
+  type(ESMF_TimeInterval) :: filename_fhoffset
+end type outputlog_config_type
+
+type :: outputlog_state_type
   logical                 :: chkfile_nextAdvance
   logical                 :: use_filesize
   character(len=256)      :: filename
   integer                 :: createsize
-  type(ESMF_Alarm)        :: alarm
-  type(ESMF_TimeInterval) :: fhoffset
-  type(ESMF_TimeInterval) :: filename_fhoffset
   type(ESMF_Time)         :: time_lastrestart
-end type outputlog_type
+end type outputlog_state_type
 
 character(len=*), parameter :: u_FILE_u = &
      __FILE__
 
 public :: file_is_complete, get_unlimited_len, get_timestr, get_importexport
 public :: readnml, debug_info, nf90_err
-public :: outputlog_type
+public :: outputlog_config_type, outputlog_state_type
 
 public :: setrequest, settype, setprefix
 
@@ -52,11 +55,11 @@ contains
 !! @param[out]    rc       return code
 subroutine readnml(fname, cf, debug, errmsg, rc)
 
-  character(len=*),     intent(in)    :: fname
-  type(outputlog_type), intent(inout) :: cf(:)
-  logical,              intent(out)   :: debug
-  character(len=*),     intent(out)   :: errmsg
-  integer,              intent(out)   :: rc
+  character(len=*),            intent(in)    :: fname
+  type(outputlog_config_type), intent(inout) :: cf(:)
+  logical,                     intent(out)   :: debug
+  character(len=*),            intent(out)   :: errmsg
+  integer,                     intent(out)   :: rc
 
   integer :: n, nn, nfreq, iounit, ierr
   logical :: existflag, outputlog_debug
@@ -76,7 +79,7 @@ subroutine readnml(fname, cf, debug, errmsg, rc)
   outputlog_fh(:) = 0
   outputlog_treduce(:) = cf(1:nfreq)%timereduce
   outputlog_fnameprefix(:) = cf(1:nfreq)%fnameprefix
-  debug = .false.
+  outputlog_debug = .false.
 
   inquire(file=trim(fname), exist=existflag)
   if (.not. existflag) then
