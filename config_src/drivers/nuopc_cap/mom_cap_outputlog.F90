@@ -49,7 +49,8 @@ use ESMF                  , only : operator(*), operator(+), operator(-), operat
 use MOM_cap_methods       , only : ChkErr
 use MOM_cap_time          , only : AlarmInit
 use shr_is_restart_fh_mod , only : log_restart_fh
-use mom_outputlog_methods , only : file_is_complete, get_unlimited_len, get_timestr, get_importexport
+use mom_outputlog_methods , only : get_file_state, file_is_complete, get_unlimited_len
+use mom_outputlog_methods , only : get_timestr, get_importexport
 use mom_outputlog_methods , only : readnml, debug_info, nf90_err
 use mom_outputlog_methods , only : outputlog_config_type, outputlog_state_type
 use mpi_f08               , only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
@@ -175,9 +176,9 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
   else
     toffset = 0
   endif
+
   ! initialize
   lastrestart = mcurrTime
-
   do n = 1,n_freq
     write(chour,'(I2.2,A)')freq(n),'h'
     cf(n)%alarm_name        = 'output_alarm'//trim(chour)
@@ -275,12 +276,12 @@ subroutine outputlog_run(mclock, atStopTime, rc)
   if (present(atStopTime)) then
     lstop = atStopTime
   endif
+  fsize(1) = nf90_fill_int
+  nlen(1)  = nf90_fill_int
 
   do n = 1,n_freq
     write(chour,'(I2.2,A)')freq(n),'h'
     filecomplete = .false.
-    fsize(1) = nf90_fill_int
-    nlen(1)  = nf90_fill_int
     if (cf(n)%requested) then
       call ESMF_ClockGetAlarm(mclock, alarmname=trim(cf(n)%alarm_name), alarm=cf(n)%alarm, rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -295,25 +296,28 @@ subroutine outputlog_run(mclock, atStopTime, rc)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
         state(n)%filename = trim(outputdir)//trim(cf(n)%fnameprefix)//trim(timestr)//'.nc'//trim(cf(n)%fnamesuffix)
 
-        ! function to check file state; returns nlen(1) on
         fname = trim(state(n)%filename)
-        if (is_root_pe()) then
-          inquire(file=fname, exist=existflag)
-          if (existflag) then
-            nlen(1) = get_unlimited_len(trim(fname))
-            inquire(file=fname, size=fsize(1))
-          endif
-        endif
-        call MPI_Bcast(nlen, 1, MPI_INTEGER, root_pe(), mpicomm, ierr)
-        if (ierr /= MPI_SUCCESS) then
-          rc = ESMF_FAILURE
-          return
-        endif
-        call MPI_Bcast(fsize, 1, MPI_INTEGER, root_pe(), mpicomm, ierr)
-        if (ierr /= MPI_SUCCESS) then
-          rc = ESMF_FAILURE
-          return
-        endif
+        call get_file_state(mpicomm, is_root_pe(), root_pe(), fname, nlen=nlen(1), fsize=fsize(1), rc=rc)
+        rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
+        if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+        ! if (is_root_pe()) then
+        !   inquire(file=fname, exist=existflag)
+        !   if (existflag) then
+        !     nlen(1) = get_unlimited_len(trim(fname))
+        !     inquire(file=fname, size=fsize(1))
+        !   endif
+        ! endif
+        ! call MPI_Bcast(nlen, 1, MPI_INTEGER, root_pe(), mpicomm, ierr)
+        ! if (ierr /= MPI_SUCCESS) then
+        !   rc = ESMF_FAILURE
+        !   return
+        ! endif
+        ! call MPI_Bcast(fsize, 1, MPI_INTEGER, root_pe(), mpicomm, ierr)
+        ! if (ierr /= MPI_SUCCESS) then
+        !   rc = ESMF_FAILURE
+        !   return
+        ! endif
 
         state(n)%createsize = fsize(1)
         if (nlen(1) == 0) then
@@ -435,17 +439,9 @@ subroutine outputlog_restart(mclock, num_rest_files, rc)
     endif
 
     ! check if file is written
-    if (is_root_pe())then
-      inquire(file=trim(fname), exist=existflag)
-      if (existflag) then
-        nlen(1) = get_unlimited_len(trim(fname))
-      endif
-    endif
-    call MPI_Bcast(nlen, 1, MPI_INTEGER, root_pe(), mpicomm, ierr)
-    if (ierr /= MPI_SUCCESS) then
-      rc = ESMF_FAILURE
-      return
-    endif
+    call get_file_state(mpicomm, is_root_pe(), root_pe(), fname, nlen=nlen(1), rc=rc)
+    rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     if (nlen(1) > 0) allDone(n) = .true.
     if (debug .and. is_root_pe()) then

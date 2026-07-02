@@ -38,7 +38,8 @@ end type outputlog_state_type
 character(len=*), parameter :: u_FILE_u = &
      __FILE__
 
-public :: file_is_complete, get_unlimited_len, get_timestr, get_importexport
+public :: get_file_state, file_is_complete, get_unlimited_len
+public :: get_timestr, get_importexport
 public :: readnml, debug_info, nf90_err
 public :: outputlog_config_type, outputlog_state_type
 
@@ -312,6 +313,48 @@ function setprefix(validfreqs, requested, nml_fh, nml_fnameprefix, errmsg, ierr)
 
 end function setprefix
 
+!> Retrieve the unlimited dimension length and file size, broadcasting to all PEs
+!! @param[in]   comm      the MPI communicator
+!! @param[in]   fname     the file name
+!! @param[out]  nlen      optional, the length of the unlimited dimension
+!! @param[out]  fsize     optional, the file size in bytes
+!! @param[out]  ierr      return code
+subroutine get_file_state(comm, isroot, rootpe, fname, nlen, fsize, rc)
+
+  type(MPI_Comm),    intent(in)  :: comm
+  logical,           intent(in)  :: isroot
+  integer,           intent(in)  :: rootpe
+  character(len=*),  intent(in)  :: fname
+  integer, optional, intent(out) :: nlen
+  integer, optional, intent(out) :: fsize
+  integer,           intent(out) :: rc
+
+  logical :: existflag
+  integer :: ierr
+  integer :: stats(2)
+
+  rc = 0
+  stats = nf90_fill_int
+
+  if (isroot) then
+    inquire(file=fname, exist=existflag)
+    if (existflag) then
+      if (present(nlen)) stats(1) = get_unlimited_len(trim(fname))
+      if (present(fsize)) inquire(file=fname, size=stats(2))
+    endif
+  endif
+
+  call MPI_Bcast(stats, 2, MPI_INTEGER, rootpe, comm, ierr)
+  if (ierr /= MPI_SUCCESS) then
+    rc = -1
+    return
+  endif
+
+  if (present(nlen)) nlen  = stats(1)
+  if (present(fsize)) fsize = stats(2)
+
+end subroutine get_file_state
+
 !> Determine if the netcdf output file is complete
 !!
 !! @param[in]   comm          the MPI communicator
@@ -331,39 +374,27 @@ logical function file_is_complete(comm, isroot, rootpe, fname, chk4size, creates
   integer,          intent(out) :: rc
 
   logical :: existflag
-  integer :: nlen(1), fsize(1), ierr
+  integer :: local_nlen, local_fsize, ierr
   !----------------------------------------------------------------------------
 
   rc = 0
 
   filecomplete = .false.
-  nlen(1) = nf90_fill_int
-  fsize(1) = nf90_fill_int
+  local_nlen = nf90_fill_int
+  local_fsize = nf90_fill_int
 
-  if (isroot) then
-    inquire(file=fname, exist=existflag)
-    if (existflag) then
-      nlen(1) = get_unlimited_len(trim(fname))
-      inquire(file=fname, size=fsize(1))
+  if (chk4size) then
+    call get_file_state(comm, isroot, rootpe, fname, nlen=local_nlen, fsize=local_fsize, rc=rc)
+    if (rc == 0) then
+      filecomplete = (local_nlen > 0 .and. local_fsize > createsize)
+    endif
+  else
+    call get_file_state(comm, isroot, rootpe, fname, nlen=local_nlen, rc=rc)
+    if (rc == 0) then
+      filecomplete = (local_nlen > 0)
     endif
   endif
 
-  call MPI_Bcast(nlen, 1, MPI_INTEGER, rootpe, comm, ierr)
-  if (ierr /= MPI_SUCCESS) then
-    rc = -1
-    return
-  endif
-  call MPI_Bcast(fsize, 1, MPI_INTEGER, rootpe, comm, ierr)
-  if (ierr /= MPI_SUCCESS) then
-    rc = -1
-    return
-  endif
-
-  if (chk4size) then
-    filecomplete = (nlen(1) > 0 .and. fsize(1) > createsize)
-  else
-    filecomplete = (nlen(1) > 0)
-  endif
 end function file_is_complete
 
 !> Return the length of the unlimited dimension
