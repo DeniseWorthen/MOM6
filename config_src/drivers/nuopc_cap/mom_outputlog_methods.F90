@@ -243,6 +243,13 @@ function setprefix(validfreqs, requested, nml_fh, nml_fnameprefix, errmsg, ierr)
       return
     endif
   enddo
+  do n = 1, nfreq
+    if (nml_fh(n) /= 0 .and. len_trim(nml_fnameprefix(n)) > 12) then
+      ierr = 1
+      write(errmsg, '(A, I2)') 'MOM_outputlog: filename prefix provided for active slot ', n
+      return
+    endif
+  enddo
 
   ! default file prefix == 'ocn' for any single freq run
   if (n_active == 1) then
@@ -253,17 +260,10 @@ function setprefix(validfreqs, requested, nml_fh, nml_fnameprefix, errmsg, ierr)
             reqval = trim(adjustl(nml_fnameprefix(m)))
 
             if (reqval == '') then
-              fileprefixes(n) = 'ocn'
+              fileprefixes(n) = 'ocn_'
             else
-              if (len_trim(nml_fnameprefix(m)) > 12) then
-                ierr = 1
-                errmsg = "MOM_outputlog: nml_fnameprefix exceeds 12 characters."
-                return
-              endif
-              fileprefixes(n) = reqval
+              fileprefixes(n) = reqval//'_'
             endif
-            exit
-
           endif
         enddo
       endif
@@ -272,44 +272,42 @@ function setprefix(validfreqs, requested, nml_fh, nml_fnameprefix, errmsg, ierr)
   endif
 
   ! multi-freq output; must provide fileprefixes
-  do n = 1, nfreq
-    if (requested(n)) then
-      do m = 1, size(nml_fh)
-        if (nml_fh(m) == validfreqs(n)) then
-          reqval = trim(adjustl(nml_fnameprefix(m)))
-          if (reqval == '') then
-            ierr = 1
-            write(errmsg, '(A, I0, A)') "MOM_outputlog: Multiple frequencies requested," // &
-                 " but nml_fnameprefix is missing for frequency ", validfreqs(n), "h."
-            return
-          endif
-          if (len_trim(nml_fnameprefix(m)) > 12) then
-            ierr = 1
-            errmsg = "MOM_outputlog: nml_fnameprefix exceeds 12 characters."
-            return
-          endif
-          fileprefixes(n) = reqval
-          exit
-        endif
-      enddo
-    endif
-  enddo
+  if (n_active > 1) then
+    do n = 1, nfreq
+      if (requested(n)) then
+        do m = 1, size(nml_fh)
+          if (nml_fh(m) == validfreqs(n)) then
+            reqval = trim(adjustl(nml_fnameprefix(m)))
 
-  ! multi-freq output: must provide unique fileprefixes
-  do n = 1, nfreq
-    if (requested(n)) then
-      do m = n + 1, nfreq
-        if (requested(m)) then
-          if (fileprefixes(n) == fileprefixes(m)) then
-            ierr = 1
-            errmsg = "MOM_outputlog: Ambiguous nml_fnameprefix '" // trim(fileprefixes(n)) // &
-                     "'. Multiple active output streams cannot share the same filename root."
-            return
+            if (reqval == '') then
+              ierr = 1
+              write(errmsg, '(A, I0, A)') "MOM_outputlog: Multiple frequencies requested," // &
+                   " but nml_fnameprefix is missing for frequency ", validfreqs(n), "h."
+              return
+            endif
+            fileprefixes(n) = reqval//'_'
+            exit
           endif
-        endif
-      enddo
-    endif
-  enddo
+        enddo
+      endif
+    enddo
+
+    ! multi-freq output: must provide unique fileprefixes
+    do n = 1, nfreq
+      if (requested(n)) then
+        do m = n + 1, nfreq
+          if (requested(m)) then
+            if (fileprefixes(n) == fileprefixes(m)) then
+              ierr = 1
+              errmsg = "MOM_outputlog: Ambiguous nml_fnameprefix '" // trim(fileprefixes(n)) // &
+                   "'. Multiple active output streams cannot share the same filename root."
+              return
+            endif
+          endif
+        enddo
+      endif
+    enddo
+  endif
 
 end function setprefix
 
@@ -330,8 +328,7 @@ subroutine get_file_state(comm, isroot, rootpe, fname, nlen, fsize, rc)
   integer,           intent(out) :: rc
 
   logical :: existflag
-  integer :: ierr
-  integer :: stats(2)
+  integer :: ierr, stats(2)
 
   rc = 0
   stats = nf90_fill_int
@@ -344,9 +341,10 @@ subroutine get_file_state(comm, isroot, rootpe, fname, nlen, fsize, rc)
     endif
   endif
 
+  rc = ierr
   call MPI_Bcast(stats, 2, MPI_INTEGER, rootpe, comm, ierr)
   if (ierr /= MPI_SUCCESS) then
-    rc = -1
+    rc = ierr
     return
   endif
 
@@ -378,19 +376,18 @@ logical function file_is_complete(comm, isroot, rootpe, fname, chk4size, creates
   !----------------------------------------------------------------------------
 
   rc = 0
-
   filecomplete = .false.
   local_nlen = nf90_fill_int
   local_fsize = nf90_fill_int
 
   if (chk4size) then
-    call get_file_state(comm, isroot, rootpe, fname, nlen=local_nlen, fsize=local_fsize, rc=rc)
-    if (rc == 0) then
+    call get_file_state(comm, isroot, rootpe, fname, nlen=local_nlen, fsize=local_fsize, rc=ierr)
+    if (ierr == 0) then
       filecomplete = (local_nlen > 0 .and. local_fsize > createsize)
     endif
   else
-    call get_file_state(comm, isroot, rootpe, fname, nlen=local_nlen, rc=rc)
-    if (rc == 0) then
+    call get_file_state(comm, isroot, rootpe, fname, nlen=local_nlen, rc=ierr)
+    if (ierr == 0) then
       filecomplete = (local_nlen > 0)
     endif
   endif

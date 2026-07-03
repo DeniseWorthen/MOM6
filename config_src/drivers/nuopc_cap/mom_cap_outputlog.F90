@@ -259,7 +259,6 @@ subroutine outputlog_run(mclock, atStopTime, rc)
   character(len=3)   :: chour
   character(len=40)  :: importexport
   character(len=16)  :: timestr
-  character(len=256) :: fname
   character(len=256) :: subname='MOM_cap:(outputlog_run)'
   !----------------------------------------------------------------------------
 
@@ -294,30 +293,13 @@ subroutine outputlog_run(mclock, atStopTime, rc)
 
         timestr = get_timestr(nextTime-cf(n)%filename_fhoffset, rc=rc)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
-        state(n)%filename = trim(outputdir)//trim(cf(n)%fnameprefix)//trim(timestr)//'.nc'//trim(cf(n)%fnamesuffix)
+        state(n)%filename = trim(outputdir)//trim(cf(n)%fnameprefix)//trim(timestr)//'.nc' &
+             //trim(cf(n)%fnamesuffix)
 
-        fname = trim(state(n)%filename)
-        call get_file_state(mpicomm, is_root_pe(), root_pe(), fname, nlen=nlen(1), fsize=fsize(1), rc=rc)
+        call get_file_state(mpicomm, is_root_pe(), root_pe(), state(n)%filename, nlen=nlen(1), &
+             fsize=fsize(1), rc=rc)
         rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-        ! if (is_root_pe()) then
-        !   inquire(file=fname, exist=existflag)
-        !   if (existflag) then
-        !     nlen(1) = get_unlimited_len(trim(fname))
-        !     inquire(file=fname, size=fsize(1))
-        !   endif
-        ! endif
-        ! call MPI_Bcast(nlen, 1, MPI_INTEGER, root_pe(), mpicomm, ierr)
-        ! if (ierr /= MPI_SUCCESS) then
-        !   rc = ESMF_FAILURE
-        !   return
-        ! endif
-        ! call MPI_Bcast(fsize, 1, MPI_INTEGER, root_pe(), mpicomm, ierr)
-        ! if (ierr /= MPI_SUCCESS) then
-        !   rc = ESMF_FAILURE
-        !   return
-        ! endif
 
         state(n)%createsize = fsize(1)
         if (nlen(1) == 0) then
@@ -327,15 +309,14 @@ subroutine outputlog_run(mclock, atStopTime, rc)
         endif
 
         if (debug .and. is_root_pe()) then
-          print '(A,2(A,L),A,2i16)',trim(subname)//' fname '//trim(state(n)%filename)//'  '//trim(importexport), &
-               ' checkflag ',state(n)%chkfile_nextAdvance,' use_filesize ',state(n)%use_filesize,                 &
-               '  ',state(n)%createsize,nlen(1)
+          print '(A,2(A,L),A,2i16)',trim(subname)//' fname '//trim(state(n)%filename)//'  '      &
+               //trim(importexport),' checkflag ',state(n)%chkfile_nextAdvance,' use_filesize ', &
+               state(n)%use_filesize, '  ',state(n)%createsize,nlen(1)
         endif
       endif ! ESMF_AlarmIsRinging
 
       if (state(n)%chkfile_nextAdvance) then
-        fname = trim(state(n)%filename)
-        filecomplete = file_is_complete(mpicomm, is_root_pe(), root_pe(), fname, &
+        filecomplete = file_is_complete(mpicomm, is_root_pe(), root_pe(), state(n)%filename, &
              state(n)%use_filesize, state(n)%createsize, rc)
         rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -361,10 +342,15 @@ subroutine outputlog_run(mclock, atStopTime, rc)
 
         timestr = get_timestr(prevring-30*freq(n)*tincrement, rc=rc)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
-        state(n)%filename = trim(outputdir)//trim(cf(n)%fnameprefix)//trim(timestr)//'.nc'//trim(cf(n)%fnamesuffix)
+        state(n)%filename = trim(outputdir)//trim(cf(n)%fnameprefix)//trim(timestr)//'.nc' &
+             //trim(cf(n)%fnamesuffix)
 
-        fname = trim(state(n)%filename)
-        filecomplete = file_is_complete(mpicomm, is_root_pe(), root_pe(), fname, &
+        call get_file_state(mpicomm, is_root_pe(), root_pe(), state(n)%filename, nlen=nlen(1), &
+             fsize=fsize(1), rc=rc)
+        rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
+        if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+        filecomplete = file_is_complete(mpicomm, is_root_pe(), root_pe(), state(n)%filename, &
              state(n)%use_filesize, state(n)%createsize, rc)
         rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -380,7 +366,6 @@ subroutine outputlog_run(mclock, atStopTime, rc)
         endif
         if (debug .and. is_root_pe()) call debug_info(trim(subname)//' lstop ',trim(state(n)%filename), &
              state(n)%chkfile_nextAdvance, state(n)%createsize, importexport)
-
       endif ! lstop
     endif ! output requested
   enddo
