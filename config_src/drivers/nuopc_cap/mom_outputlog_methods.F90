@@ -85,7 +85,7 @@ subroutine readnml(fname, cf, debug, errmsg, rc)
   inquire(file=trim(fname), exist=existflag)
   if (.not. existflag) then
     write (errmsg, '(a)') 'FATAL ERROR: input file '//trim(fname)//' does not exist'
-    rc = -1
+    ierr = 1
     return
   else
     open (action='read', file=trim(fname), iostat=ierr, newunit=iounit)
@@ -93,7 +93,7 @@ subroutine readnml(fname, cf, debug, errmsg, rc)
     close (iounit)
     if (ierr /= 0) then
       cf(:)%requested = .false.
-      write (errmsg, '(a)') ' MOM output logging disabled '
+      write (errmsg, '(a)') ' Namelist ERROR: MOM output logging disabled '
       return
     endif
   endif
@@ -246,7 +246,7 @@ function setprefix(validfreqs, requested, nml_fh, nml_fnameprefix, errmsg, ierr)
   do n = 1, nfreq
     if (nml_fh(n) /= 0 .and. len_trim(nml_fnameprefix(n)) > 12) then
       ierr = 1
-      write(errmsg, '(A, I2)') 'MOM_outputlog: filename prefix provided for active slot ', n
+      write(errmsg, '(A, I2)') 'MOM_outputlog: filename prefix too long for active slot ', n
       return
     endif
   enddo
@@ -341,7 +341,6 @@ subroutine get_file_state(comm, isroot, rootpe, fname, nlen, fsize, rc)
     endif
   endif
 
-  rc = ierr
   call MPI_Bcast(stats, 2, MPI_INTEGER, rootpe, comm, ierr)
   if (ierr /= MPI_SUCCESS) then
     rc = ierr
@@ -372,25 +371,26 @@ logical function file_is_complete(comm, isroot, rootpe, fname, chk4size, creates
   integer,          intent(out) :: rc
 
   logical :: existflag
-  integer :: local_nlen, local_fsize, ierr
+  integer :: l_nlen, l_fsize, ierr
   !----------------------------------------------------------------------------
 
   rc = 0
   filecomplete = .false.
-  local_nlen = nf90_fill_int
-  local_fsize = nf90_fill_int
+  l_nlen = nf90_fill_int
+  l_fsize = nf90_fill_int
 
   if (chk4size) then
-    call get_file_state(comm, isroot, rootpe, fname, nlen=local_nlen, fsize=local_fsize, rc=ierr)
+    call get_file_state(comm, isroot, rootpe, fname, nlen=l_nlen, fsize=l_fsize, rc=ierr)
     if (ierr == 0) then
-      filecomplete = (local_nlen > 0 .and. local_fsize > createsize)
+      filecomplete = (l_nlen > 0 .and. l_fsize > createsize)
     endif
   else
-    call get_file_state(comm, isroot, rootpe, fname, nlen=local_nlen, rc=ierr)
+    call get_file_state(comm, isroot, rootpe, fname, nlen=l_nlen, rc=ierr)
     if (ierr == 0) then
-      filecomplete = (local_nlen > 0)
+      filecomplete = (l_nlen > 0)
     endif
   endif
+  rc = ierr
 
 end function file_is_complete
 

@@ -159,6 +159,8 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
   call get_MOM_input(dirs=dirs)
   restartdir = trim(dirs%restart_output_dir)
   outputdir = trim(dirs%output_directory)
+  !print *,'XXX restart dirs = '//trim(restartdir)
+  !print *,'XXX output dirs = '//trim(outputdir)
 
   io_layout = mpp_get_io_domain_layout(ocean_grid%Domain%mpp_domain)
   nfiles = io_layout(1) * io_layout(2)
@@ -208,9 +210,9 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
     endif
 
     call AlarmInit(mclock,                  &
-         alarm     = cf(n)%alarm,         &
+         alarm     = cf(n)%alarm,           &
          option    = 'nhours',              &
-         opt_n     = cf(n)%opt_n,         &
+         opt_n     = cf(n)%opt_n,           &
          opt_ymd   = -999,                  &
          RefTime   = mcurrTime+alarmoffset, &
          alarmname = cf(n)%alarm_name, rc=rc)
@@ -227,6 +229,14 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
   if (is_root_pe() .and. len_trim(errmsg) > 0) print '(A)',trim(subname)//trim(errmsg)
 
+  do n = 1,n_freq
+    if (trim(cf(n)%timereduce) == 'none') then
+      cf(n)%filename_fhoffset   = 60*freq(n)*tincrement
+    else
+      cf(n)%filename_fhoffset   = 90*freq(n)*tincrement
+    endif
+  enddo
+
   if (debug .and. is_root_pe()) then
     do n = 1,n_freq
       print '(A,i8)',trim(subname)//' toffset = ',toffset
@@ -234,8 +244,8 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
     enddo
     do n = 1,n_freq
-      if (cf(n)%requested) print '(A,i6,A)',trim(subname)//' output requested: hours(freq), type  ',&
-           cf(n)%opt_n,'  '//cf(n)%timereduce
+      if (cf(n)%requested) print '(A,i6,A)',trim(subname)//' output requested: freq (hours)= ' &
+           ,cf(n)%opt_n,', time_reduction= '//cf(n)%timereduce
     enddo
   endif
 
@@ -255,7 +265,7 @@ subroutine outputlog_run(mclock, atStopTime, rc)
   type(ESMF_Time)    :: nextTime, currTime, startTime, prevRing
   logical            :: lstop
   logical            :: filecomplete
-  integer            :: n, nlen(1), fsize(1), ierr
+  integer            :: n, nlen, fsize, ierr
   character(len=3)   :: chour
   character(len=40)  :: importexport
   character(len=16)  :: timestr
@@ -275,8 +285,8 @@ subroutine outputlog_run(mclock, atStopTime, rc)
   if (present(atStopTime)) then
     lstop = atStopTime
   endif
-  fsize(1) = nf90_fill_int
-  nlen(1)  = nf90_fill_int
+  fsize = nf90_fill_int
+  nlen  = nf90_fill_int
 
   do n = 1,n_freq
     write(chour,'(I2.2,A)')freq(n),'h'
@@ -296,13 +306,13 @@ subroutine outputlog_run(mclock, atStopTime, rc)
         state(n)%filename = trim(outputdir)//trim(cf(n)%fnameprefix)//trim(timestr)//'.nc' &
              //trim(cf(n)%fnamesuffix)
 
-        call get_file_state(mpicomm, is_root_pe(), root_pe(), state(n)%filename, nlen=nlen(1), &
-             fsize=fsize(1), rc=rc)
+        call get_file_state(mpicomm, is_root_pe(), root_pe(), state(n)%filename, nlen=nlen, &
+             fsize=fsize, rc=rc)
         rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-        state(n)%createsize = fsize(1)
-        if (nlen(1) == 0) then
+        state(n)%createsize = fsize
+        if (nlen == 0) then
           state(n)%use_filesize = .false.
         else
           state(n)%use_filesize = .true.
@@ -311,7 +321,7 @@ subroutine outputlog_run(mclock, atStopTime, rc)
         if (debug .and. is_root_pe()) then
           print '(A,2(A,L),A,2i16)',trim(subname)//' fname '//trim(state(n)%filename)//'  '      &
                //trim(importexport),' checkflag ',state(n)%chkfile_nextAdvance,' use_filesize ', &
-               state(n)%use_filesize, '  ',state(n)%createsize,nlen(1)
+               state(n)%use_filesize, '  ',state(n)%createsize,nlen
         endif
       endif ! ESMF_AlarmIsRinging
 
@@ -345,8 +355,8 @@ subroutine outputlog_run(mclock, atStopTime, rc)
         state(n)%filename = trim(outputdir)//trim(cf(n)%fnameprefix)//trim(timestr)//'.nc' &
              //trim(cf(n)%fnamesuffix)
 
-        call get_file_state(mpicomm, is_root_pe(), root_pe(), state(n)%filename, nlen=nlen(1), &
-             fsize=fsize(1), rc=rc)
+        call get_file_state(mpicomm, is_root_pe(), root_pe(), state(n)%filename, nlen=nlen, &
+             fsize=fsize, rc=rc)
         rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
@@ -383,7 +393,7 @@ subroutine outputlog_restart(mclock, num_rest_files, rc)
 
   ! local variables
   type(ESMF_Time)      :: startTime, currTime, nextTime
-  integer              :: n, nlen(1), ierr
+  integer              :: n, nlen, ierr
   integer              :: year, month, day, hour, minute, seconds
   character(len=256)   :: fname
   character(len=15)    :: timestr
@@ -424,13 +434,13 @@ subroutine outputlog_restart(mclock, num_rest_files, rc)
     endif
 
     ! check if file is written
-    call get_file_state(mpicomm, is_root_pe(), root_pe(), fname, nlen=nlen(1), rc=rc)
+    call get_file_state(mpicomm, is_root_pe(), root_pe(), fname, nlen=nlen, rc=rc)
     rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    if (nlen(1) > 0) allDone(n) = .true.
+    if (nlen > 0) allDone(n) = .true.
     if (debug .and. is_root_pe()) then
-      if (nlen(1) > 0) then
+      if (nlen > 0) then
         print '(A)',trim(subname)//' restart '//trim(fname)//'  '//trim(importexport)//' complete'
       else
         print '(A)',trim(subname)//' restart '//trim(fname)//'  '//trim(importexport)//' still 0'
