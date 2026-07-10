@@ -484,7 +484,7 @@ subroutine debug_info(tag,fname,chkflag,filesize,timestring)
       print '(A,L,2i16)',trim(msgString)//'     complete, chkflag ',chkflag,filesize,fsize
     endif
   else
-    write(msgString,'(A)')tag//'  '//fname//' does not exist '//timestring
+    write(msgString,'(A)')tag//'  '//'no output file exists '//timestring
     print '(A)',trim(msgString)
   endif
 end subroutine debug_info
