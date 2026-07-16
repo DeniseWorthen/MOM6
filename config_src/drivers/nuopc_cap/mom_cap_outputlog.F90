@@ -242,7 +242,7 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
     cf(:)%requested = .false.
     if (is_root_pe())print '(A)',trim(subname)//' output logging unavailable when IO_LAYOUT is used '
   endif
-  do n = 1,nfreq
+  do n = 1,n_freq
     if (trim(cf(n)%timereduce) == 'none') then
       cf(n)%requested = .false.
       if (is_root_pe())print '(A)',trim(subname)//' output logging unavailable when Snapshots are requested '
