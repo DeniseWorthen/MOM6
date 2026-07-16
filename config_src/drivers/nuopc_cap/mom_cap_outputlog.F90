@@ -237,12 +237,25 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
     endif
   enddo
 
-  if (debug .and. is_root_pe()) then
+  ! Snapshots and IO_Layout not yet implemented
+  if (nfiles > 1) then
+    cf(:)%requested = .false.
+    if (is_root_pe())print '(A)',trim(subname)//' output logging unavailable when IO_LAYOUT is used '
+  endif
+  do n = 1,nfreq
+    if (trim(cf(n)%timereduce) == 'none') then
+      cf(n)%requested = .false.
+      if (is_root_pe())print '(A)',trim(subname)//' output logging unavailable when Snapshots are requested '
+    endif
+  enddo
+
+  if (is_root_pe()) then
     do n = 1,n_freq
       print '(A,i8)',trim(subname)//' toffset = ',toffset
       call ESMF_TimeIntervalPrint(cf(n)%filename_fhoffset, options="string", rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
     enddo
+
     do n = 1,n_freq
       if (cf(n)%requested) print '(A,i6,A)',trim(subname)//' output requested: freq (hours)= ' &
            ,cf(n)%opt_n,', time_reduction= '//cf(n)%timereduce
