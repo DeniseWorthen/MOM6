@@ -110,7 +110,14 @@ subroutine readnml(fname, cf, debug, errmsg, rc)
   if (ierr /= 0) return
 
 end subroutine readnml
-!> TODO: doxy
+
+!> Validate requested output frequencies from namelist entries
+!!
+!! @param[in]   validfreqs     supported output frequencies (hours)
+!! @param[in]   requested_fh   requested frequencies read from namelist
+!! @param[out]  errmsg         error message
+!! @param[out]  ierr           return code
+!! @return                     logical flags indicating requested valid frequencies
 function setrequest(validfreqs, requested_fh, errmsg, ierr) result(is_requested)
   integer,          intent(in)  :: validfreqs(:)
   integer,          intent(in)  :: requested_fh(:)
@@ -156,7 +163,16 @@ function setrequest(validfreqs, requested_fh, errmsg, ierr) result(is_requested)
   enddo
 
 end function setrequest
-!> TODO: doxy
+
+!> Determine output reduction type for each requested frequency
+!!
+!! @param[in]   validfreqs   supported output frequencies (hours)
+!! @param[in]   requested    logical flags for active output frequencies
+!! @param[in]   nml_fh       requested frequencies read from namelist
+!! @param[in]   nml_type     requested output reduction types from namelist
+!! @param[out]  errmsg       error message
+!! @param[out]  ierr         return code
+!! @return                   output reduction type by supported frequency slot
 function settype(validfreqs, requested, nml_fh, nml_type, errmsg, ierr) result(filetypes)
 
   integer,          intent(in)  :: validfreqs(:)
@@ -214,7 +230,16 @@ function settype(validfreqs, requested, nml_fh, nml_type, errmsg, ierr) result(f
   enddo
 
 end function settype
-!> TODO: doxy
+
+!> Determine filename prefixes for each requested frequency
+!!
+!! @param[in]   validfreqs       supported output frequencies (hours)
+!! @param[in]   requested        logical flags for active output frequencies
+!! @param[in]   nml_fh           requested frequencies read from namelist
+!! @param[in]   nml_fnameprefix  requested filename prefixes from namelist
+!! @param[out]  errmsg           error message
+!! @param[out]  ierr             return code
+!! @return                       filename prefixes by supported frequency slot
 function setprefix(validfreqs, requested, nml_fh, nml_fnameprefix, errmsg, ierr) result(fileprefixes)
 
   integer,          intent(in)  :: validfreqs(:)
@@ -313,10 +338,12 @@ end function setprefix
 
 !> Retrieve the unlimited dimension length and file size, broadcasting to all PEs
 !! @param[in]   comm      the MPI communicator
+!! @param[in]   isroot    logical flag for root PE
+!! @param[in]   rootpe    root rank in communicator
 !! @param[in]   fname     the file name
 !! @param[out]  nlen      optional, the length of the unlimited dimension
 !! @param[out]  fsize     optional, the file size in bytes
-!! @param[out]  ierr      return code
+!! @param[out]  rc        return code
 subroutine get_file_state(comm, isroot, rootpe, fname, nlen, fsize, rc)
 
   type(MPI_Comm),    intent(in)  :: comm
@@ -355,6 +382,8 @@ end subroutine get_file_state
 !> Determine if the netcdf output file is complete
 !!
 !! @param[in]   comm          the MPI communicator
+!! @param[in]   isroot        logical flag for root PE
+!! @param[in]   rootpe        root rank in communicator
 !! @param[in]   fname         the file name
 !! @param[in]   chk4size      logical flag for check method in use
 !! @param[in]   createsize    the filesize at creation
