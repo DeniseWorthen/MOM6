@@ -433,7 +433,7 @@ integer function get_unlimited_len(fname) result(unlen)
   integer :: ncid, dimid
   !----------------------------------------------------------------------------
 
-  unlen = 0
+  unlen = nf90_fill_int
   call nf90_err(nf90_open(trim(fname), nf90_nowrite, ncid), 'nf90_open: '//trim(fname))
   call nf90_err(nf90_inquire(ncid, unlimiteddimid=dimid), 'inquire unlimiteddimid')
   call nf90_err(nf90_inquire_dimension(ncid, dimid, len=unlen), 'inquire unlimited dimension')
@@ -500,17 +500,20 @@ subroutine debug_info(tag,fname,chkflag,filesize,timestring)
 
   logical :: existflag
   integer :: fsize
+  integer :: unlen
   character(len=256) :: msgString
   !----------------------------------------------------------------------------
 
   inquire(file=fname, exist=existflag)
   if (existflag) then
     inquire(file=fname, size=fsize)
+    unlen = get_unlimited_len(trim(fname))
+
     write(msgString,'(A)')tag//'  '//fname//' exists '//timestring
     if (chkflag) then
-      print '(A,L,2i16)',trim(msgString)//' not complete, chkflag ',chkflag,filesize,fsize
+      print '(A,L,2i16,i5)',trim(msgString)//' not complete, chkflag ',chkflag,filesize,fsize,unlen
     else
-      print '(A,L,2i16)',trim(msgString)//'     complete, chkflag ',chkflag,filesize,fsize
+      print '(A,L,2i16,i5)',trim(msgString)//'     complete, chkflag ',chkflag,filesize,fsize,unlen
     endif
   else
     write(msgString,'(A)')tag//'  '//'no output file exists '//timestring
