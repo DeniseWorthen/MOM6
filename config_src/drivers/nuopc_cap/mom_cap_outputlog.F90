@@ -114,8 +114,7 @@ type(MPI_Comm)          :: mpicomm
 
 integer                 :: toffset
 integer                 :: nfiles
-logical                 :: debug
-logical                 :: existflag
+logical                 :: debug_onroot
 character(len=256)      :: restartdir
 character(len=256)      :: outputdir
 character(len=256)      :: errmsg
@@ -140,12 +139,11 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
   type(ESMF_Time)         :: mcurrTime
   type(ESMF_TimeInterval) :: alarmoffset
   type(directories)       :: dirs
-  logical                 :: isPresent, isSet
+  logical                 :: debug
   integer                 :: n, int_mpic, io_layout(2)
   integer                 :: year, month, day, hour
   character(len=3)        :: chour
   character(len=256)      :: msgString
-  character(len=256)      :: value
   character(len=256)      :: subname='MOM_cap:(outputlog_init)'
   !----------------------------------------------------------------------------
 
@@ -229,6 +227,8 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
   if (is_root_pe() .and. len_trim(errmsg) > 0) print '(A)',trim(subname)//trim(errmsg)
 
+  debug_onroot = debug .and. is_root_pe()
+
   do n = 1,n_freq
     if (trim(cf(n)%timereduce) == 'none') then
       cf(n)%filename_fhoffset   = 60*freq(n)*tincrement
@@ -263,7 +263,6 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
   endif
 
 end subroutine outputlog_init
-
 !> Write a log file denoting that an output file is complete
 !!
 !! @param clock        an ESMF_Clock object
@@ -278,7 +277,7 @@ subroutine outputlog_run(mclock, atStopTime, rc)
   type(ESMF_Time)    :: nextTime, currTime, startTime, prevRing
   logical            :: lstop
   logical            :: filecomplete
-  integer            :: n, nlen, fsize, ierr
+  integer            :: n, nlen, fsize
   character(len=3)   :: chour
   character(len=40)  :: importexport
   character(len=16)  :: timestr
@@ -333,7 +332,7 @@ subroutine outputlog_run(mclock, atStopTime, rc)
           state(n)%use_filesize = .true.
         endif
 
-        if (debug .and. is_root_pe()) then
+        if (debug_onroot then
           print '(A,2(A,L),A,2i16)',trim(subname)//' fname '//trim(state(n)%filename)//'  '      &
                //trim(importexport),' checkflag ',state(n)%chkfile_nextAdvance,' use_filesize ', &
                state(n)%use_filesize, '  ',state(n)%createsize,nlen
@@ -447,7 +446,7 @@ subroutine outputlog_run(mclock, atStopTime, rc)
           endif
         endif
       endif
-      if (debug .and. is_root_pe()) call debug_info(trim(subname)//'  ',trim(state(n)%filename), &
+      if (debug_onroot) call debug_info(trim(subname)//'  ',trim(state(n)%filename), &
            state(n)%chkfile_nextAdvance, state(n)%createsize, importexport)
 
       if (lstop) then
@@ -480,7 +479,7 @@ subroutine outputlog_run(mclock, atStopTime, rc)
             if (ChkErr(rc,__LINE__,u_FILE_u)) return
           endif
         endif
-        if (debug .and. is_root_pe()) call debug_info(trim(subname)//' lstop ',trim(state(n)%filename), &
+        if (debug_onroot) call debug_info(trim(subname)//' lstop ',trim(state(n)%filename), &
              state(n)%chkfile_nextAdvance, state(n)%createsize, importexport)
       endif ! lstop
     endif ! output requested
@@ -499,7 +498,7 @@ subroutine outputlog_restart(mclock, num_rest_files, rc)
 
   ! local variables
   type(ESMF_Time)      :: startTime, currTime, nextTime
-  integer              :: n, nlen, ierr
+  integer              :: n, nlen
   integer              :: year, month, day, hour, minute, seconds
   character(len=256)   :: fname
   character(len=15)    :: timestr
@@ -545,7 +544,7 @@ subroutine outputlog_restart(mclock, num_rest_files, rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     if (nlen > 0) allDone(n) = .true.
-    if (debug .and. is_root_pe()) then
+    if (debug_onroot) then
       if (nlen > 0) then
         print '(A)',trim(subname)//' restart '//trim(fname)//'  '//trim(importexport)//' complete'
       else
