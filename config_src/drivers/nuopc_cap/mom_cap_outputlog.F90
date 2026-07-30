@@ -51,7 +51,7 @@ use MOM_cap_time          , only : AlarmInit
 use shr_is_restart_fh_mod , only : log_restart_fh
 use mom_outputlog_methods , only : get_file_state, file_is_complete, get_unlimited_len
 use mom_outputlog_methods , only : get_timestr, get_importexport
-use mom_outputlog_methods , only : readnml, debug_info, nf90_err
+use mom_outputlog_methods , only : readnml, debug_info
 use mom_outputlog_methods , only : outputlog_config_type, outputlog_state_type
 use mpi_f08               , only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
 use netcdf
@@ -191,7 +191,7 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
     else
       cf(n)%fnamesuffix     = '.000'
     endif
-    cf(n)%fhoffset          = 0*tincrement
+    cf(n)%fhoffset          = 60*tincrement
     cf(n)%filename_fhoffset = 0*tincrement
 
     state(n)%chkfile_nextAdvance = .false.
@@ -283,7 +283,7 @@ subroutine outputlog_run(mclock, atStopTime, rc)
   character(len=16)  :: timestr
   character(len=256) :: subname='MOM_cap:(outputlog_run)'
   !debug
-  character(len=256) :: tmpname
+  !character(len=256) :: tmpname
   !----------------------------------------------------------------------------
 
   rc = ESMF_SUCCESS
@@ -338,97 +338,6 @@ subroutine outputlog_run(mclock, atStopTime, rc)
                state(n)%use_filesize, '  ',state(n)%createsize,nlen
         endif
       endif ! ESMF_AlarmIsRinging
-
-        ! tmpname = "MOM6_OUTPUT/ocn_2021_03_22_06_30.nc"
-        ! importexport = get_importexport(currTime, nextTime, rc=rc)
-        ! call get_file_state(mpicomm, is_root_pe(), root_pe(), trim(tmpname), nlen=nlen, &
-        !      fsize=fsize, rc=rc)
-        ! rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
-        ! if (ChkErr(rc,__LINE__,u_FILE_u)) return
-        ! if(is_root_pe()) then
-        !   inquire(file=trim(tmpname), exist=existflag)
-        !   if (existflag) then
-        !     print '(a,i6,i16)','XXX  '//trim(tmpname)//' exist '//trim(importexport)//' ',nlen,fsize
-        !   endif
-        ! endif
-
-        ! tmpname = "MOM6_OUTPUT/ocn_2021_03_22_07_00.nc"
-        ! importexport = get_importexport(currTime, nextTime, rc=rc)
-        ! call get_file_state(mpicomm, is_root_pe(), root_pe(), trim(tmpname), nlen=nlen, &
-        !      fsize=fsize, rc=rc)
-        ! rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
-        ! if (ChkErr(rc,__LINE__,u_FILE_u)) return
-        ! if(is_root_pe()) then
-        !   inquire(file=trim(tmpname), exist=existflag)
-        !   if (existflag) then
-        !     print '(a,i6,i16)','XXX  '//trim(tmpname)//' exist '//trim(importexport)//' ',nlen,fsize
-        !   endif
-        ! endif
-
-        ! tmpname = "MOM6_OUTPUT/ocn_2021_03_22_07_30.nc"
-        ! importexport = get_importexport(currTime, nextTime, rc=rc)
-        ! call get_file_state(mpicomm, is_root_pe(), root_pe(), trim(tmpname), nlen=nlen, &
-        !      fsize=fsize, rc=rc)
-        ! rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
-        ! if (ChkErr(rc,__LINE__,u_FILE_u)) return
-        ! if(is_root_pe()) then
-        !   inquire(file=trim(tmpname), exist=existflag)
-        !   if (existflag) then
-        !     print '(a,i6,i16)','XXX  '//trim(tmpname)//' exist '//trim(importexport)//' ',nlen,fsize
-        !   endif
-        ! endif
-
-        ! tmpname = "MOM6_OUTPUT/ocn_2021_03_22_08_00.nc"
-        ! importexport = get_importexport(currTime, nextTime, rc=rc)
-        ! call get_file_state(mpicomm, is_root_pe(), root_pe(), trim(tmpname), nlen=nlen, &
-        !      fsize=fsize, rc=rc)
-        ! rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
-        ! if (ChkErr(rc,__LINE__,u_FILE_u)) return
-        ! if(is_root_pe()) then
-        !   inquire(file=trim(tmpname), exist=existflag)
-        !   if (existflag) then
-        !     print '(a,i6,i16)','XXX  '//trim(tmpname)//' exist '//trim(importexport)//' ',nlen,fsize
-        !   endif
-        ! endif
-
-        ! tmpname = "MOM6_OUTPUT/ocn_2021_03_22_08_30.nc"
-        ! importexport = get_importexport(currTime, nextTime, rc=rc)
-        ! call get_file_state(mpicomm, is_root_pe(), root_pe(), trim(tmpname), nlen=nlen, &
-        !      fsize=fsize, rc=rc)
-        ! rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
-        ! if (ChkErr(rc,__LINE__,u_FILE_u)) return
-        ! if(is_root_pe()) then
-        !   inquire(file=trim(tmpname), exist=existflag)
-        !   if (existflag) then
-        !     print '(a,i6,i16)','XXX  '//trim(tmpname)//' exist '//trim(importexport)//' ',nlen,fsize
-        !   endif
-        ! endif
-
-        ! tmpname = "MOM6_OUTPUT/ocn_2021_03_22_09_00.nc"
-        ! importexport = get_importexport(currTime, nextTime, rc=rc)
-        ! call get_file_state(mpicomm, is_root_pe(), root_pe(), trim(tmpname), nlen=nlen, &
-        !      fsize=fsize, rc=rc)
-        ! rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
-        ! if (ChkErr(rc,__LINE__,u_FILE_u)) return
-        ! if(is_root_pe()) then
-        !   inquire(file=trim(tmpname), exist=existflag)
-        !   if (existflag) then
-        !     print '(a,i6,i16)','XXX  '//trim(tmpname)//' exist '//trim(importexport)//' ',nlen,fsize
-        !   endif
-        ! endif
-
-        ! tmpname = "MOM6_OUTPUT/ocn_2021_03_22_09_30.nc"
-        ! importexport = get_importexport(currTime, nextTime, rc=rc)
-        ! call get_file_state(mpicomm, is_root_pe(), root_pe(), trim(tmpname), nlen=nlen, &
-        !      fsize=fsize, rc=rc)
-        ! rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
-        ! if (ChkErr(rc,__LINE__,u_FILE_u)) return
-        ! if(is_root_pe()) then
-        !   inquire(file=trim(tmpname), exist=existflag)
-        !   if (existflag) then
-        !     print '(a,i6,i16)','XXX  '//trim(tmpname)//' exist '//trim(importexport)//' ',nlen,fsize
-        !   endif
-        ! endif
 
       if (state(n)%chkfile_nextAdvance) then
         filecomplete = file_is_complete(mpicomm, is_root_pe(), root_pe(), state(n)%filename, &
