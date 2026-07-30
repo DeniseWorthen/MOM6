@@ -23,7 +23,7 @@ type :: outputlog_config_type
   character(len=12)       :: fnameprefix
   character(len=4)        :: fnamesuffix
   type(ESMF_Alarm)        :: alarm
-  type(ESMF_TimeInterval) :: fhoffset
+  type(ESMF_TimeInterval) :: logname_fhoffset
   type(ESMF_TimeInterval) :: filename_fhoffset
 end type outputlog_config_type
 

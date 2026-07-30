@@ -191,7 +191,7 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
     else
       cf(n)%fnamesuffix     = '.000'
     endif
-    cf(n)%fhoffset          = 60*tincrement
+    cf(n)%logname_fhoffset  = 0*tincrement
     cf(n)%filename_fhoffset = 0*tincrement
 
     state(n)%chkfile_nextAdvance = .false.
@@ -231,9 +231,11 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
 
   do n = 1,n_freq
     if (trim(cf(n)%timereduce) == 'none') then
-      cf(n)%filename_fhoffset   = 60*freq(n)*tincrement
+      cf(n)%logname_fhoffset  = 0*tincrement
+      cf(n)%filename_fhoffset = 60*freq(n)*tincrement
     else
-      cf(n)%filename_fhoffset   = 90*freq(n)*tincrement
+      cf(n)%logname_fhoffset  = 60*freq(n)*tincrement
+      cf(n)%filename_fhoffset = 90*freq(n)*tincrement
     endif
   enddo
 
@@ -350,8 +352,9 @@ subroutine outputlog_run(mclock, atStopTime, rc)
           state(n)%time_lastrestart = lastrestart
           if (is_root_pe()) then
             print '(A)','XXX log '//chour//'  '//trim(importexport)//' '//trim(state(n)%filename)
-            call log_restart_fh(currTime-cf(n)%fhoffset, startTime, 'mom6.'//chour, prefixtime=.true., &
-                 lastrestart=state(n)%time_lastrestart, lastoutput=state(n)%filename, rc=rc)
+            call log_restart_fh(currTime-cf(n)%logname_fhoffset, startTime, 'mom6.'//chour, &
+                 prefixtime=.true., lastrestart=state(n)%time_lastrestart,                  &
+                 lastoutput=state(n)%filename, rc=rc)
             if (ChkErr(rc,__LINE__,u_FILE_u)) return
           endif
         endif
