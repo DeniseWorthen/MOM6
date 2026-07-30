@@ -351,7 +351,7 @@ subroutine outputlog_run(mclock, atStopTime, rc)
           state(n)%chkfile_nextAdvance = .false.
           state(n)%time_lastrestart = lastrestart
           if (is_root_pe()) then
-            print '(A)','XXX log '//chour//'  '//trim(importexport)//' '//trim(state(n)%filename)
+            !print '(A)','XXX log '//chour//'  '//trim(importexport)//' '//trim(state(n)%filename)
             call log_restart_fh(currTime-cf(n)%logname_fhoffset, startTime, 'mom6.'//chour, &
                  prefixtime=.true., lastrestart=state(n)%time_lastrestart,                  &
                  lastoutput=state(n)%filename, rc=rc)
@@ -368,10 +368,19 @@ subroutine outputlog_run(mclock, atStopTime, rc)
         call ESMF_AlarmGet(cf(n)%alarm, prevRingTime=prevring, rc=rc)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-        timestr = get_timestr(prevring-30*freq(n)*tincrement, rc=rc)
-        if (ChkErr(rc,__LINE__,u_FILE_u)) return
+        if (trim(cf(n)%timereduce) == 'none') then
+          timestr = get_timestr(prevring, rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+        else
+          timestr = get_timestr(prevring-30*freq(n)*tincrement, rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+        endif
+
         state(n)%filename = trim(outputdir)//trim(cf(n)%fnameprefix)//trim(timestr)//'.nc' &
              //trim(cf(n)%fnamesuffix)
+        !if (debug_onroot) then
+        !  print '(A)','XX0 lstop '//trim(state(n)%filename)
+        !endif
 
         call get_file_state(mpicomm, is_root_pe(), root_pe(), state(n)%filename, nlen=nlen, &
              fsize=fsize, rc=rc)
@@ -387,7 +396,7 @@ subroutine outputlog_run(mclock, atStopTime, rc)
           state(n)%chkfile_nextAdvance = .false.
           state(n)%time_lastrestart = lastrestart
           if (is_root_pe()) then
-            print '(A)','XXX log lstop '//chour//'  '//trim(importexport)//' '//trim(state(n)%filename)
+            !print '(A)','XXX log lstop '//chour//'  '//trim(importexport)//' '//trim(state(n)%filename)
             call log_restart_fh(prevring, startTime, 'mom6.lstop.'//chour, prefixtime=.true., &
                  lastrestart=state(n)%time_lastrestart, lastoutput=state(n)%filename, rc=rc)
             if (ChkErr(rc,__LINE__,u_FILE_u)) return
