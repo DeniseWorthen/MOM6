@@ -332,7 +332,7 @@ subroutine outputlog_run(mclock, atStopTime, rc)
           state(n)%use_filesize = .true.
         endif
 
-        if (debug_onroot then
+        if (debug_onroot) then
           print '(A,2(A,L),A,2i16)',trim(subname)//' fname '//trim(state(n)%filename)//'  '      &
                //trim(importexport),' checkflag ',state(n)%chkfile_nextAdvance,' use_filesize ', &
                state(n)%use_filesize, '  ',state(n)%createsize,nlen
@@ -349,6 +349,7 @@ subroutine outputlog_run(mclock, atStopTime, rc)
           state(n)%chkfile_nextAdvance = .false.
           state(n)%time_lastrestart = lastrestart
           if (is_root_pe()) then
+            print '(A)','XXX log '//chour//'  '//trim(importexport)//' '//trim(state(n)%filename)
             call log_restart_fh(currTime-cf(n)%fhoffset, startTime, 'mom6.'//chour, prefixtime=.true., &
                  lastrestart=state(n)%time_lastrestart, lastoutput=state(n)%filename, rc=rc)
             if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -383,6 +384,7 @@ subroutine outputlog_run(mclock, atStopTime, rc)
           state(n)%chkfile_nextAdvance = .false.
           state(n)%time_lastrestart = lastrestart
           if (is_root_pe()) then
+            print '(A)','XXX log lstop '//chour//'  '//trim(importexport)//' '//trim(state(n)%filename)
             call log_restart_fh(prevring, startTime, 'mom6.lstop.'//chour, prefixtime=.true., &
                  lastrestart=state(n)%time_lastrestart, lastoutput=state(n)%filename, rc=rc)
             if (ChkErr(rc,__LINE__,u_FILE_u)) return
