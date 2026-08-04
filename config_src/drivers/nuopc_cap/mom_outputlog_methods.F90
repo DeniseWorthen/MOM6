@@ -248,6 +248,23 @@ function setrequest(validfreqs, requested_fh, errmsg, ierr) result(is_requested)
     endif
   enddo
 end function setrequest
+!> Helper function to locate index of namelist provided frequency
+!! in array of valid frequencies
+!!
+!! param[in]      nml_fh        namelist freq list
+!! param[in]      target_freq   desired frequency value
+!! @return        m             index association
+function find_nml_slot(nml_fh, target_freq) result(m)
+  integer, intent(in) :: nml_fh(:)
+  integer, intent(in) :: target_freq
+
+  integer :: m
+
+  do m = 1, size(nml_fh)
+    if (nml_fh(m) == target_freq) return
+  enddo
+  m = 0
+end function find_nml_slot
 !> Determine output reduction type for each requested frequency
 !!
 !! @param[in]   validfreqs   supported output frequencies (hours)
@@ -297,20 +314,21 @@ function settype(validfreqs, requested, nml_fh, nml_type, errmsg, ierr) result(f
   enddo
 
   do n = 1, nfreq
-    if (requested(n)) then
+    if (.not. requested(n)) cycle
 
-      do m = 1, size(nml_fh)
-        if (nml_fh(m) == validfreqs(n)) then
-          reqval = trim(adjustl(nml_type(m)))
-          if (reqval == 'average' .or. reqval == 'none') then
-            filetypes(n) = reqval
-          else
-            filetypes(n) = 'average'
-          endif
-          exit
-        endif
-      enddo
+    m = find_nml_slot(nml_fh, validfreqs(n))
+    if (m == 0) then
+      ierr = 1
+      write(errmsg, '(A, I0)') "MOM_outputlog: internal error -- no matching nml_fh slot for validfreqs ", &
+           validfreqs(n)
+      return
+    endif
 
+    reqval = trim(adjustl(nml_type(m)))
+    if (reqval == 'average' .or. reqval == 'none') then
+      filetypes(n) = reqval
+    else
+      filetypes(n) = 'average'
     endif
   enddo
 end function settype
@@ -358,67 +376,74 @@ function setprefix(validfreqs, requested, nml_fh, nml_fnameprefix, errmsg, ierr)
       return
     endif
   enddo
+  do n = 1, nfreq
+    if (nml_fh(n) /= 0 .and. len_trim(nml_fnameprefix(n)) > 0) then
+      if (verify(trim(nml_fnameprefix(n)), &
+           'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_') > 0) then
+        ierr = 1
+        write(errmsg, '(A, I2, A)') 'MOM_outputlog: filename prefix for active slot ', n, &
+             ' contains invalid characters (letters, digits, underscore only)'
+        return
+      endif
+    endif
+  enddo
 
   ! default file prefix == 'ocn' for any single freq run
   if (n_active == 1) then
-    do n = 1, nfreq
-      if (requested(n)) then
+    n = findloc(requested, .true., dim=1)   ! exactly one true value
 
-        do m = 1, size(nml_fh)
-          if (nml_fh(m) == validfreqs(n)) then
-            reqval = trim(adjustl(nml_fnameprefix(m)))
+    m = find_nml_slot(nml_fh, validfreqs(n))
+    if (m == 0) then
+      ierr = 1
+      write(errmsg, '(A, I0)') "MOM_outputlog: internal error -- no matching nml_fh slot for validfreqs ", &
+           validfreqs(n)
+      return
+    endif
 
-            if (reqval == '') then
-              fileprefixes(n) = 'ocn_'
-            else
-              fileprefixes(n) = reqval//'_'
-            endif
-          endif
-        enddo
-
-      endif
-    enddo
+    reqval = trim(adjustl(nml_fnameprefix(m)))
+    if (reqval == '') then
+      fileprefixes(n) = 'ocn_'
+    else
+      fileprefixes(n) = reqval//'_'
+    endif
     return
   endif
 
   ! multi-freq output; must provide fileprefixes
   if (n_active > 1) then
     do n = 1, nfreq
-      if (requested(n)) then
+      if (.not. requested(n)) cycle
 
-        do m = 1, size(nml_fh)
-          if (nml_fh(m) == validfreqs(n)) then
-            reqval = trim(adjustl(nml_fnameprefix(m)))
-            if (reqval == '') then
-              ierr = 1
-              write(errmsg, '(A, I0, A)') "MOM_outputlog: Multiple frequencies requested," // &
-                   " but nml_fnameprefix is missing for frequency ", validfreqs(n), "h."
-              return
-            endif
-            fileprefixes(n) = reqval//'_'
-            exit
-          endif
-        enddo
-
+      m = find_nml_slot(nml_fh, validfreqs(n))
+      if (m == 0) then
+        ierr = 1
+        write(errmsg, '(A, I0)') "MOM_outputlog: internal error -- no matching nml_fh slot for validfreqs ", &
+             validfreqs(n)
+        return
       endif
+
+      reqval = trim(adjustl(nml_fnameprefix(m)))
+      if (reqval == '') then
+        ierr = 1
+        write(errmsg, '(A, I0, A)') "MOM_outputlog: Multiple frequencies requested," // &
+             " but nml_fnameprefix is missing for frequency ", validfreqs(n), "h."
+        return
+      endif
+      fileprefixes(n) = reqval//'_'
     enddo
 
     ! multi-freq output: must provide unique fileprefixes
     do n = 1, nfreq
-      if (requested(n)) then
+      if (.not. requested(n)) cycle
 
-        do m = n + 1, nfreq
-          if (requested(m)) then
-            if (fileprefixes(n) == fileprefixes(m)) then
-              ierr = 1
-              errmsg = "MOM_outputlog: Ambiguous nml_fnameprefix '" // trim(fileprefixes(n)) // &
-                   "'. Multiple active output streams cannot share the same filename root."
-              return
-            endif
-          endif
-        enddo
-
-      endif
+      do m = n + 1, nfreq
+        if (requested(m) .and. fileprefixes(n) == fileprefixes(m)) then
+          ierr = 1
+          errmsg = "MOM_outputlog: Ambiguous nml_fnameprefix '" // trim(fileprefixes(n)) // &
+               "'. Multiple active output streams cannot share the same filename root."
+          return
+        endif
+      enddo
     enddo
   endif ! n_active > 1
 
