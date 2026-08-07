@@ -169,14 +169,8 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
   call ESMF_TimeIntervalSet(tincrement, m=1, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-  ! get start hour time offset (ie, fhrot)
   call ESMF_TimeGet(mcurrTime, yy=year, mm=month, dd=day, h=hour, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
-  if (mod(hour,6) /= 0) then
-    toffset = hour - 6
-  else
-    toffset = 0
-  endif
 
   ! initialize
   lastrestart = mcurrTime
@@ -201,12 +195,14 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
     state(n)%createsize          = 0
     state(n)%time_lastrestart    = lastrestart
 
-    ! the time offset in hours required to ensure the alarm rings at multiples of 6
-    if (freq(n) >= 6) then
-      alarmoffset = toffset*60*tincrement
+    ! the time offset in hours required to ensure the alarm rings at multiples of freq(n)
+    ! regardless of start day/hour
+    if (mod(hour, freq(n)) /= 0) then
+      toffset = freq(n) - mod(hour, freq(n))
     else
-      alarmoffset = 0*tincrement
+      toffset = 0
     endif
+    alarmoffset = toffset*60*tincrement
 
     call AlarmInit(mclock,                  &
          alarm     = cf(n)%alarm,           &
