@@ -20,7 +20,7 @@ type :: outputlog_config_type
   integer                 :: opt_n
   logical                 :: requested
   character(len=7)        :: timereduce
-  character(len=12)       :: fnameprefix
+  character(len=13)       :: fnameprefix
   character(len=4)        :: fnamesuffix
   type(ESMF_Alarm)        :: alarm
   type(ESMF_TimeInterval) :: logname_fhoffset
@@ -248,8 +248,7 @@ function setrequest(validfreqs, requested_fh, errmsg, ierr) result(is_requested)
     endif
   enddo
 end function setrequest
-!> Helper function to locate index of namelist provided frequency
-!! in array of valid frequencies
+!> Helper function to locate index of namelist provided frequency in array of valid frequencies
 !!
 !! param[in]      nml_fh        namelist freq list
 !! param[in]      target_freq   desired frequency value
@@ -340,7 +339,7 @@ end function settype
 !! @param[in]   nml_fnameprefix  requested filename prefixes from namelist
 !! @param[out]  errmsg           error message
 !! @param[out]  ierr             return code
-!! @return                       filename prefixes by supported frequency slot
+!! @return                       filename prefixes, underscore added, by supported frequency slot
 function setprefix(validfreqs, requested, nml_fh, nml_fnameprefix, errmsg, ierr) result(fileprefixes)
 
   integer,          intent(in)  :: validfreqs(:)
@@ -351,8 +350,8 @@ function setprefix(validfreqs, requested, nml_fh, nml_fnameprefix, errmsg, ierr)
   integer,          intent(out) :: ierr
 
   integer :: n, m, nfreq, n_active
-  character(len=12) :: reqval
-  character(len=12) :: fileprefixes(size(validfreqs))
+  character(len=13) :: reqval
+  character(len=13) :: fileprefixes(size(validfreqs))
 
   nfreq = size(validfreqs)
   ierr = 0
@@ -404,7 +403,7 @@ function setprefix(validfreqs, requested, nml_fh, nml_fnameprefix, errmsg, ierr)
     if (reqval == '') then
       fileprefixes(n) = 'ocn_'
     else
-      fileprefixes(n) = reqval//'_'
+      fileprefixes(n) = trim(reqval)//'_'
     endif
     return
   endif
@@ -429,7 +428,7 @@ function setprefix(validfreqs, requested, nml_fh, nml_fnameprefix, errmsg, ierr)
              " but nml_fnameprefix is missing for frequency ", validfreqs(n), "h."
         return
       endif
-      fileprefixes(n) = reqval//'_'
+      fileprefixes(n) = trim(reqval)//'_'
     enddo
 
     ! multi-freq output: must provide unique fileprefixes

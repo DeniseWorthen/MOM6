@@ -53,6 +53,7 @@ use mom_outputlog_methods , only : get_file_state, file_is_complete, get_unlimit
 use mom_outputlog_methods , only : get_timestr, get_importexport
 use mom_outputlog_methods , only : readnml, debug_info
 use mom_outputlog_methods , only : outputlog_config_type, outputlog_state_type
+use mom_outputlog_methods , only : set_toffset
 use mpi_f08               , only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
 use netcdf
 
@@ -300,11 +301,11 @@ end subroutine outputlog_run
 !! @param[in]     lastrestart            last restart write
 !! @param[in]     debug_onroot           logical flag to enable debug printing
 !! @param[in]     atStopTime             logical flag for checking files at finalize
-!! @param[out]    fcomplete_out          determined file state, used in unit test context
-!! @param[out]    fcomplete_lstop_out    determined file state at StopTime, used in unit test context
+!! @param[out]    filecomplete_out          determined file state, used in unit test context
+!! @param[out]    filecomplete_lstop_out    determined file state at StopTime, used in unit test context
 !! @param[out]    rc                     return code
 subroutine outputlog_freqn(mclock, cf_n, state_n, mpicomm, isroot, rootpe, outputdir, tincrement, &
-     lastrestart, debug_onroot, atStopTime, rc, fcomplete_out, fcomplete_lstop_out)
+     lastrestart, debug_onroot, atStopTime, rc, filecomplete_out, filecomplete_lstop_out)
 
   type(ESMF_Clock),             intent(in)    :: mclock
   type(outputlog_config_type),  intent(inout) :: cf_n
@@ -318,8 +319,8 @@ subroutine outputlog_freqn(mclock, cf_n, state_n, mpicomm, isroot, rootpe, outpu
   logical,                      intent(in)    :: debug_onroot
   logical, optional,            intent(in)    :: atStopTime
   integer,                      intent(out)   :: rc
-  logical, optional,            intent(out)   :: fcomplete_out
-  logical, optional,            intent(out)   :: fcomplete_lstop_out
+  logical, optional,            intent(out)   :: filecomplete_out
+  logical, optional,            intent(out)   :: filecomplete_lstop_out
 
   ! local variables
   type(ESMF_Time)     :: nextTime, currTime, startTime, prevring
@@ -333,8 +334,8 @@ subroutine outputlog_freqn(mclock, cf_n, state_n, mpicomm, isroot, rootpe, outpu
   !----------------------------------------------------------------------------
 
   rc = ESMF_SUCCESS
-  if (present(fcomplete_out))       fcomplete_out       = .false.
-  if (present(fcomplete_lstop_out)) fcomplete_lstop_out = .false.
+  if (present(filecomplete_out))       filecomplete_out       = .false.
+  if (present(filecomplete_lstop_out)) filecomplete_lstop_out = .false.
 
   call ESMF_ClockGet(mclock, startTime=startTime, currTime=currTime, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -391,7 +392,7 @@ subroutine outputlog_freqn(mclock, cf_n, state_n, mpicomm, isroot, rootpe, outpu
            state_n%use_filesize, state_n%createsize, rc)
       rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-      if (present(fcomplete_out)) fcomplete_out = filecomplete
+      if (present(filecomplete_out)) filecomplete_out = filecomplete
 
       if (filecomplete) then
         state_n%chkfile_nextAdvance = .false.
@@ -433,7 +434,7 @@ subroutine outputlog_freqn(mclock, cf_n, state_n, mpicomm, isroot, rootpe, outpu
            state_n%use_filesize, state_n%createsize, rc)
       rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-      if (present(fcomplete_lstop_out)) fcomplete_lstop_out = filecomplete
+      if (present(filecomplete_lstop_out)) filecomplete_lstop_out = filecomplete
 
       if (filecomplete) then
         state_n%chkfile_nextAdvance = .false.
