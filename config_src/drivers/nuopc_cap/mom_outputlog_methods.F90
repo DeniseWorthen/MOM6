@@ -248,8 +248,7 @@ function setrequest(validfreqs, requested_fh, errmsg, ierr) result(is_requested)
     endif
   enddo
 end function setrequest
-!> Helper function to locate index of namelist provided frequency
-!! in array of valid frequencies
+!> Helper function to locate index of namelist provided frequency in array of valid frequencies
 !!
 !! param[in]      nml_fh        namelist freq list
 !! param[in]      target_freq   desired frequency value

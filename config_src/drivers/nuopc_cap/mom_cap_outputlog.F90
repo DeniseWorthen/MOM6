@@ -53,6 +53,7 @@ use mom_outputlog_methods , only : get_file_state, file_is_complete, get_unlimit
 use mom_outputlog_methods , only : get_timestr, get_importexport
 use mom_outputlog_methods , only : readnml, debug_info
 use mom_outputlog_methods , only : outputlog_config_type, outputlog_state_type
+use mom_outputlog_methods , only : set_toffset
 use mpi_f08               , only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
 use netcdf
 
