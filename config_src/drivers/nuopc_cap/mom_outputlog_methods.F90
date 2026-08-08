@@ -43,7 +43,7 @@ public :: get_timestr, get_importexport
 public :: readnml, debug_info, nf90_err
 public :: outputlog_config_type, outputlog_state_type
 
-public :: setrequest, settype, setprefix
+public :: setrequest, settype, setprefix, set_toffset
 
 contains
 
@@ -448,6 +448,29 @@ function setprefix(validfreqs, requested, nml_fh, nml_fnameprefix, errmsg, ierr)
   endif ! n_active > 1
 
 end function setprefix
+!> Compute the alarm-alignment toffset
+!!
+!! The time offset in hours (toffset) required to ensure that an output-frequency alarm
+!! rings on that frequency's own nominal grid, regardless of the actual (eg restart or
+!! IAU-shifted) start hour.
+!!
+!! @param[in]  hour   the model's actual start hour (0-23)
+!! @param[in]  freq   the output frequency, in hours
+!! @return            the alignment offset, in hours
+function set_toffset(hour, freq) result(toffset)
+  integer, intent(in) :: hour
+  integer, intent(in) :: freq
+
+  integer             :: toffset
+
+  if (freq == 1 .or. freq == 24) then
+    toffset = 0
+  else if (mod(hour, freq) /= 0) then
+    toffset = freq - mod(hour, freq)
+  else
+    toffset = 0
+  endif
+end function set_toffset
 !> Return the length of the unlimited dimension
 !!
 !! @param[in]  fname   the file name

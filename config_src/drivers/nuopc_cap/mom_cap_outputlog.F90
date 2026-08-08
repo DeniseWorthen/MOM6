@@ -197,11 +197,7 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
 
     ! the time offset in hours required to ensure the alarm rings at multiples of freq(n)
     ! regardless of start day/hour
-    if (mod(hour, freq(n)) /= 0) then
-      toffset = freq(n) - mod(hour, freq(n))
-    else
-      toffset = 0
-    endif
+    toffset = set_toffset(hour, freq(n))
     alarmoffset = toffset*60*tincrement
 
     call AlarmInit(mclock,                  &
