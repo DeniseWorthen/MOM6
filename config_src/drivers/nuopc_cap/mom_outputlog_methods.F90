@@ -7,8 +7,9 @@
 
 module mom_outputlog_methods
 
-use ESMF,              only : ESMF_Alarm, ESMF_TimeInterval
+use ESMF,              only : ESMF_Alarm, ESMF_TimeInterval, ESMF_Clock
 use ESMF,              only : ESMF_SUCCESS, ESMF_Failure, ESMF_Time, ESMF_TimeGet
+use ESMF,              only : ESMF_AlarmIsRinging, ESMF_ClockGetNextTime
 use MOM_cap_methods,   only : ChkErr
 use mpi_f08,           only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
 use netcdf
@@ -20,7 +21,7 @@ type :: outputlog_config_type
   integer                 :: opt_n
   logical                 :: requested
   character(len=7)        :: timereduce
-  character(len=13)       :: fnameprefix
+  character(len=13)       :: fnameprefix   ! 12 user chars max + appended '_' -- see setprefix
   character(len=4)        :: fnamesuffix
   type(ESMF_Alarm)        :: alarm
   type(ESMF_TimeInterval) :: logname_fhoffset
@@ -33,6 +34,8 @@ type :: outputlog_state_type
   character(len=256)      :: filename
   integer                 :: createsize
   type(ESMF_Time)         :: time_lastrestart
+  logical                 :: ringing
+  type(ESMF_Time)         :: nextTime
 end type outputlog_state_type
 
 character(len=*), parameter :: u_FILE_u = &
@@ -43,7 +46,7 @@ public :: get_timestr, get_importexport
 public :: readnml, debug_info, nf90_err
 public :: outputlog_config_type, outputlog_state_type
 
-public :: setrequest, settype, setprefix, set_toffset
+public :: setrequest, settype, setprefix, set_toffset, get_ring_state
 
 contains
 
@@ -339,7 +342,7 @@ end function settype
 !! @param[in]   nml_fnameprefix  requested filename prefixes from namelist
 !! @param[out]  errmsg           error message
 !! @param[out]  ierr             return code
-!! @return                       filename prefixes, underscore added, by supported frequency slot
+!! @return                       filename prefixes by supported frequency slot
 function setprefix(validfreqs, requested, nml_fh, nml_fnameprefix, errmsg, ierr) result(fileprefixes)
 
   integer,          intent(in)  :: validfreqs(:)
@@ -350,7 +353,7 @@ function setprefix(validfreqs, requested, nml_fh, nml_fnameprefix, errmsg, ierr)
   integer,          intent(out) :: ierr
 
   integer :: n, m, nfreq, n_active
-  character(len=13) :: reqval
+  character(len=13) :: reqval       ! 12 user chars max + appended '_'
   character(len=13) :: fileprefixes(size(validfreqs))
 
   nfreq = size(validfreqs)
@@ -470,6 +473,25 @@ function set_toffset(hour, freq) result(toffset)
     toffset = 0
   endif
 end function set_toffset
+!> Obtain the model clock's nextTime and Alarm ring status
+!!
+!! @param[in]  mclock     the model clock
+!! @param[in]  alarm      the alarm to check
+!! @param[out] ringing    logical, .true. if the alarm is currently ringing
+!! @param[out] nextTime   the clock's next time (currTime + timeStep)
+!! @param[out] rc         return code
+subroutine get_ring_state(mclock, alarm, ringing, nextTime, rc)
+  type(ESMF_Clock), intent(in)  :: mclock
+  type(ESMF_Alarm), intent(in)  :: alarm
+  logical,          intent(out) :: ringing
+  type(ESMF_Time),  intent(out) :: nextTime
+  integer,          intent(out) :: rc
+
+  ringing = ESMF_AlarmIsRinging(alarm, rc=rc)
+  if (rc /= ESMF_SUCCESS) return
+
+  call ESMF_ClockGetNextTime(mclock, nextTime, rc=rc)
+end subroutine get_ring_state
 !> Return the length of the unlimited dimension
 !!
 !! @param[in]  fname   the file name

@@ -40,7 +40,7 @@ use mpp_domains_mod       , only : mpp_get_io_domain_layout
 use NUOPC                 , only : NUOPC_CompAttributeGet
 use ESMF                  , only : ESMF_GridComp, ESMF_GridCompGet, ESMF_VM, ESMF_VMGet
 use ESMF                  , only : ESMF_Time, ESMF_Clock, ESMF_ClockGet, ESMF_Alarm, ESMF_AlarmSet
-use ESMF                  , only : ESMF_ClockGetAlarm, ESMF_AlarmIsRinging, ESMF_AlarmRingerOff
+use ESMF                  , only : ESMF_ClockGetAlarm, ESMF_AlarmRingerOff
 use ESMF                  , only : ESMF_ClockGetNextTime, ESMF_TimeGet, ESMF_TimeInterval
 use ESMF                  , only : ESMF_AlarmGet, ESMF_TimeIntervalSet, ESMF_TimeIntervalPrint
 use ESMF                  , only : ESMF_SUCCESS, ESMF_LogWrite, ESMF_LOGMSG_INFO, ESMF_FAILURE
@@ -53,7 +53,7 @@ use mom_outputlog_methods , only : get_file_state, file_is_complete, get_unlimit
 use mom_outputlog_methods , only : get_timestr, get_importexport
 use mom_outputlog_methods , only : readnml, debug_info
 use mom_outputlog_methods , only : outputlog_config_type, outputlog_state_type
-use mom_outputlog_methods , only : set_toffset
+use mom_outputlog_methods , only : set_toffset, get_ring_state
 use mpi_f08               , only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
 use netcdf
 
@@ -356,14 +356,16 @@ subroutine outputlog_freqn(mclock, cf_n, state_n, mpicomm, isroot, rootpe, outpu
   if (cf_n%requested) then
     call ESMF_ClockGetAlarm(mclock, alarmname=trim(cf_n%alarm_name), alarm=cf_n%alarm, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    call get_ring_state(mclock, cf_n%alarm, state_n%ringing, state_n%nextTime, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
     ! when the alarm rings, set file check on next advance and construct the filename
-    if (ESMF_AlarmIsRinging(cf_n%alarm, rc=rc)) then
-      if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    if (state_n%ringing) then
       call ESMF_AlarmRingerOff(cf_n%alarm, rc=rc )
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
       state_n%chkfile_nextAdvance = .true.
 
-      timestr = get_timestr(nextTime-cf_n%filename_fhoffset, rc=rc)
+      timestr = get_timestr(state_n%nextTime-cf_n%filename_fhoffset, rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
       state_n%filename = trim(outputdir)//trim(cf_n%fnameprefix)//trim(timestr)//'.nc' &
            //trim(cf_n%fnamesuffix)
@@ -385,7 +387,7 @@ subroutine outputlog_freqn(mclock, cf_n, state_n, mpicomm, isroot, rootpe, outpu
              //trim(importexport),' checkflag ',state_n%chkfile_nextAdvance,' use_filesize ', &
              state_n%use_filesize, '  ',state_n%createsize,nlen
       endif
-    endif ! ESMF_AlarmIsRinging
+    endif ! state_n%ringing
 
     if (state_n%chkfile_nextAdvance) then
       filecomplete = file_is_complete(mpicomm, isroot, rootpe, state_n%filename, &
