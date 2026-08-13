@@ -7,8 +7,11 @@
 
 module mom_outputlog_methods
 
-use ESMF,              only : ESMF_Alarm, ESMF_TimeInterval
+use ESMF,              only : ESMF_Alarm, ESMF_TimeInterval, ESMF_Clock
 use ESMF,              only : ESMF_SUCCESS, ESMF_Failure, ESMF_Time, ESMF_TimeGet
+use ESMF,              only : ESMF_ClockGetNextTime
+use ESMF,              only : ESMF_AlarmRingerOff, ESMF_AlarmGet, operator(-), operator(*)
+use shr_is_restart_fh_mod , only : log_restart_fh
 use MOM_cap_methods,   only : ChkErr
 use mpi_f08,           only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
 use netcdf
@@ -20,7 +23,7 @@ type :: outputlog_config_type
   integer                 :: opt_n
   logical                 :: requested
   character(len=7)        :: timereduce
-  character(len=13)       :: fnameprefix
+  character(len=13)       :: fnameprefix   ! 12 user chars max + appended '_' -- see setprefix
   character(len=4)        :: fnamesuffix
   type(ESMF_Alarm)        :: alarm
   type(ESMF_TimeInterval) :: logname_fhoffset
@@ -43,7 +46,8 @@ public :: get_timestr, get_importexport
 public :: readnml, debug_info, nf90_err
 public :: outputlog_config_type, outputlog_state_type
 
-public :: setrequest, settype, setprefix, set_toffset
+public :: setrequest, settype, setprefix, set_toffset, get_ring_state
+public :: get_lstop_ring_state, check_file_completion
 
 contains
 
@@ -339,7 +343,7 @@ end function settype
 !! @param[in]   nml_fnameprefix  requested filename prefixes from namelist
 !! @param[out]  errmsg           error message
 !! @param[out]  ierr             return code
-!! @return                       filename prefixes, underscore added, by supported frequency slot
+!! @return                       filename prefixes by supported frequency slot
 function setprefix(validfreqs, requested, nml_fh, nml_fnameprefix, errmsg, ierr) result(fileprefixes)
 
   integer,          intent(in)  :: validfreqs(:)
@@ -350,7 +354,7 @@ function setprefix(validfreqs, requested, nml_fh, nml_fnameprefix, errmsg, ierr)
   integer,          intent(out) :: ierr
 
   integer :: n, m, nfreq, n_active
-  character(len=13) :: reqval
+  character(len=13) :: reqval       ! 12 user chars max + appended '_'
   character(len=13) :: fileprefixes(size(validfreqs))
 
   nfreq = size(validfreqs)
@@ -470,6 +474,168 @@ function set_toffset(hour, freq) result(toffset)
     toffset = 0
   endif
 end function set_toffset
+
+!> Given that this frequency's alarm has JUST rung (the caller has already
+!! determined this, however -- production and tests do so differently, so
+!! this routine deliberately doesn't check ringing itself), sets up
+!! tracking for the newly-closing interval: turns the alarm off, computes
+!! the filename from nextTime, checks the file's real initial state, and
+!! records createsize/use_filesize/chkfile_nextAdvance into state_n. This
+!! is exactly outputlog_freqn's own regular (non-lstop) ring-response
+!! logic, factored out so it can be driven directly by a test without
+!! needing a real advancing ESMF_Clock -- only a plain ESMF_Time for
+!! nextTime is needed, however it was obtained.
+!!
+!! @param[in]     nextTime   the clock's next time (currTime + timeStep)
+!! @param[inout]  alarm      the alarm that just rang (turned off here)
+!! @param[in]     cf_n       this frequency's config (fnameprefix etc.)
+!! @param[inout]  state_n    this frequency's state -- mutated here
+!! @param[in]     comm       MPI communicator
+!! @param[in]     isroot     .true. on the root PE
+!! @param[in]     rootpe     the root PE's rank
+!! @param[in]     outputdir  output directory
+!! @param[out]    rc         return code
+subroutine get_ring_state(nextTime, alarm, cf_n, state_n, comm, isroot, rootpe, outputdir, rc)
+  type(ESMF_Time),              intent(in)    :: nextTime
+  type(ESMF_Alarm),              intent(inout) :: alarm
+  type(outputlog_config_type),  intent(in)    :: cf_n
+  type(outputlog_state_type),   intent(inout) :: state_n
+  type(MPI_Comm),                intent(in)    :: comm
+  logical,                       intent(in)    :: isroot
+  integer,                       intent(in)    :: rootpe
+  character(len=*),              intent(in)    :: outputdir
+  integer,                       intent(out)   :: rc
+
+  integer :: nlen, fsize
+  character(len=16) :: timestr
+
+  call ESMF_AlarmRingerOff(alarm, rc=rc)
+  if (rc /= ESMF_SUCCESS) return
+
+  state_n%chkfile_nextAdvance = .true.
+
+  timestr = get_timestr(nextTime-cf_n%filename_fhoffset, rc=rc)
+  if (rc /= ESMF_SUCCESS) return
+  state_n%filename = trim(outputdir)//trim(cf_n%fnameprefix)//trim(timestr)//'.nc' &
+       //trim(cf_n%fnamesuffix)
+
+  call get_file_state(comm, isroot, rootpe, state_n%filename, nlen=nlen, fsize=fsize, rc=rc)
+  rc = merge(ESMF_SUCCESS, ESMF_Failure, rc == 0)
+  if (rc /= ESMF_SUCCESS) return
+
+  state_n%createsize = fsize
+  if (nlen == 0) then
+    state_n%use_filesize = .false.
+  else
+    state_n%use_filesize = .true.
+  endif
+end subroutine get_ring_state
+
+!> lstop's OWN version of get_ring_state: sets up tracking for the
+!! CURRENTLY OPEN interval (the one whose own closing ring will never
+!! happen, since the model is stopping), using prevRingTime as the
+!! filename basis instead of nextTime -- the only real difference from the
+!! regular case. Does NOT turn any alarm off (lstop isn't responding to a
+!! ring event) and does NOT touch chkfile_nextAdvance (check_file_completion,
+!! called separately right after this, doesn't need it set for the lstop
+!! path -- it's called unconditionally there, unlike the regular path).
+!!
+!! @param[in]     alarm      this frequency's alarm (read prevRingTime from it)
+!! @param[in]     tincrement one-minute interval, used in the 'average' offset
+!! @param[in]     cf_n       this frequency's config
+!! @param[inout]  state_n    this frequency's state -- mutated here
+!! @param[in]     comm       MPI communicator
+!! @param[in]     isroot     .true. on the root PE
+!! @param[in]     rootpe     the root PE's rank
+!! @param[in]     outputdir  output directory
+!! @param[out]    prevring   the alarm's own last-rung time, for the caller
+!!                           to also pass to check_file_completion's logtime
+!! @param[out]    rc         return code
+subroutine get_lstop_ring_state(alarm, tincrement, cf_n, state_n, comm, isroot, rootpe, &
+     outputdir, prevring, rc)
+  type(ESMF_Alarm),              intent(in)    :: alarm
+  type(ESMF_TimeInterval),       intent(in)    :: tincrement
+  type(outputlog_config_type),  intent(in)    :: cf_n
+  type(outputlog_state_type),   intent(inout) :: state_n
+  type(MPI_Comm),                intent(in)    :: comm
+  logical,                       intent(in)    :: isroot
+  integer,                       intent(in)    :: rootpe
+  character(len=*),              intent(in)    :: outputdir
+  type(ESMF_Time),               intent(out)   :: prevring
+  integer,                       intent(out)   :: rc
+
+  integer :: nlen, fsize
+  character(len=16) :: timestr
+
+  ! use prevRing in place of currTime to allow for stopping between
+  ! averaging intervals; prevring == currTime if stopping on intervals
+  call ESMF_AlarmGet(alarm, prevRingTime=prevring, rc=rc)
+  if (rc /= ESMF_SUCCESS) return
+
+  if (trim(cf_n%timereduce) == 'none') then
+    timestr = get_timestr(prevring, rc=rc)
+  else
+    timestr = get_timestr(prevring-30*cf_n%opt_n*tincrement, rc=rc)
+  endif
+  if (rc /= ESMF_SUCCESS) return
+
+  state_n%filename = trim(outputdir)//trim(cf_n%fnameprefix)//trim(timestr)//'.nc' &
+       //trim(cf_n%fnamesuffix)
+
+  call get_file_state(comm, isroot, rootpe, state_n%filename, nlen=nlen, fsize=fsize, rc=rc)
+  rc = merge(ESMF_SUCCESS, ESMF_Failure, rc == 0)
+end subroutine get_lstop_ring_state
+
+!> Given that state_n is tracking a file (set up by either get_ring_state
+!! or get_lstop_ring_state), polls its real current state and, if
+!! complete, clears tracking and logs it via log_restart_fh. Shared by
+!! both the regular and lstop paths -- they differ only in WHICH time/name
+!! basis the log uses, both passed in here rather than hardcoded, so this
+!! routine itself never needs to know which path called it.
+!!
+!! @param[inout]  state_n      this frequency's state -- mutated here
+!! @param[in]     comm         MPI communicator
+!! @param[in]     isroot       .true. on the root PE
+!! @param[in]     rootpe       the root PE's rank
+!! @param[in]     startTime    the run's start time (passed through to the log)
+!! @param[in]     logtime      the time basis for log_restart_fh (regular:
+!!                             currTime-logname_fhoffset; lstop: prevring)
+!! @param[in]     complog      the log's base name (regular: 'mom6.'//chour;
+!!                             lstop: 'mom6.lstop.'//chour)
+!! @param[in]     lastrestart  passed through to the log
+!! @param[out]    filecomplete .true. if the file was found complete this call
+!! @param[out]    rc           return code
+subroutine check_file_completion(state_n, comm, isroot, rootpe, startTime, logtime, complog, &
+     lastrestart, filecomplete, rc)
+  type(outputlog_state_type),  intent(inout) :: state_n
+  type(MPI_Comm),               intent(in)    :: comm
+  logical,                      intent(in)    :: isroot
+  integer,                      intent(in)    :: rootpe
+  type(ESMF_Time),              intent(in)    :: startTime
+  type(ESMF_Time),              intent(in)    :: logtime
+  character(len=*),             intent(in)    :: complog
+  type(ESMF_Time),              intent(in)    :: lastrestart
+  logical,                      intent(out)   :: filecomplete
+  integer,                      intent(out)   :: rc
+
+  filecomplete = .false.
+  rc = ESMF_SUCCESS
+  if (.not. state_n%chkfile_nextAdvance) return
+
+  filecomplete = file_is_complete(comm, isroot, rootpe, state_n%filename, &
+       state_n%use_filesize, state_n%createsize, rc)
+  rc = merge(ESMF_SUCCESS, ESMF_Failure, rc == 0)
+  if (rc /= ESMF_SUCCESS) return
+
+  if (filecomplete) then
+    state_n%chkfile_nextAdvance = .false.
+    state_n%time_lastrestart = lastrestart
+    if (isroot) then
+      call log_restart_fh(logtime, startTime, trim(complog), prefixtime=.true., &
+           lastrestart=state_n%time_lastrestart, lastoutput=state_n%filename, rc=rc)
+    endif
+  endif
+end subroutine check_file_completion
 !> Return the length of the unlimited dimension
 !!
 !! @param[in]  fname   the file name
