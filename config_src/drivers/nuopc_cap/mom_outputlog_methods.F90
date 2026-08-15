@@ -536,9 +536,12 @@ end subroutine get_ring_state
 !! happen, since the model is stopping), using prevRingTime as the
 !! filename basis instead of nextTime -- the only real difference from the
 !! regular case. Does NOT turn any alarm off (lstop isn't responding to a
-!! ring event) and does NOT touch chkfile_nextAdvance (check_file_completion,
-!! called separately right after this, doesn't need it set for the lstop
-!! path -- it's called unconditionally there, unlike the regular path).
+!! ring event) but DOES set chkfile_nextAdvance=.true., since
+!! check_file_completion's early-return guard depends on it and this
+!! routine now shares that routine with the regular path (a real bug in an
+!! earlier version of this refactor: the plain finalize call completing an
+!! earlier file clears this flag, so without setting it again here, a
+!! subsequent lstop check_file_completion call would silently no-op).
 !!
 !! @param[in]     alarm      this frequency's alarm (read prevRingTime from it)
 !! @param[in]     tincrement one-minute interval, used in the 'average' offset
@@ -582,8 +585,29 @@ subroutine get_lstop_ring_state(alarm, tincrement, cf_n, state_n, comm, isroot, 
   state_n%filename = trim(outputdir)//trim(cf_n%fnameprefix)//trim(timestr)//'.nc' &
        //trim(cf_n%fnamesuffix)
 
+  ! check_file_completion's early-return guard (`if (.not.
+  ! state_n%chkfile_nextAdvance) return`) was designed for the regular
+  ! path, where get_ring_state sets this true -- but check_file_completion
+  ! is shared with the lstop path too, so this MUST also be set true here,
+  ! or a plain finalize call completing (and clearing) an earlier regular
+  ! file immediately before this one runs would cause check_file_completion
+  ! to bail out here without ever checking anything. The original,
+  ! pre-refactor lstop block never had this dependency at all (it called
+  ! file_is_complete directly, unconditionally) -- this is a product of
+  ! sharing the completion-check routine, not something lstop itself ever
+  ! needed to reason about before.
+  state_n%chkfile_nextAdvance = .true.
+
   call get_file_state(comm, isroot, rootpe, state_n%filename, nlen=nlen, fsize=fsize, rc=rc)
   rc = merge(ESMF_SUCCESS, ESMF_Failure, rc == 0)
+  if (rc /= ESMF_SUCCESS) return
+
+  state_n%createsize = fsize
+  if (nlen == 0) then
+    state_n%use_filesize = .false.
+  else
+    state_n%use_filesize = .true.
+  endif
 end subroutine get_lstop_ring_state
 
 !> Given that state_n is tracking a file (set up by either get_ring_state
