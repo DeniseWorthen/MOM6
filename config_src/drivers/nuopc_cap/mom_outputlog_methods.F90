@@ -588,35 +588,45 @@ end subroutine get_lstop_ring_state
 
 !> Given that state_n is tracking a file (set up by either get_ring_state
 !! or get_lstop_ring_state), polls its real current state and, if
-!! complete, clears tracking and logs it via log_restart_fh. Shared by
-!! both the regular and lstop paths -- they differ only in WHICH time/name
-!! basis the log uses, both passed in here rather than hardcoded, so this
-!! routine itself never needs to know which path called it.
+!! complete, clears tracking and, if a log basis was supplied, logs it via
+!! log_restart_fh. Shared by both the regular and lstop paths -- they
+!! differ only in WHICH time/name basis the log uses, both passed in here
+!! rather than hardcoded, so this routine itself never needs to know which
+!! path called it. logtime/complog are OPTIONAL: state_n%time_lastrestart
+!! still gets updated on every completion regardless (a real state
+!! transition, not tied to whether a log gets written), but the
+!! log_restart_fh call itself is skipped entirely if the caller has no use
+!! for a log (e.g. a test verifying completion detection alone, where a
+!! log file would just be untested noise in the output directory).
 !!
 !! @param[inout]  state_n      this frequency's state -- mutated here
 !! @param[in]     comm         MPI communicator
 !! @param[in]     isroot       .true. on the root PE
 !! @param[in]     rootpe       the root PE's rank
 !! @param[in]     startTime    the run's start time (passed through to the log)
-!! @param[in]     logtime      the time basis for log_restart_fh (regular:
-!!                             currTime-logname_fhoffset; lstop: prevring)
-!! @param[in]     complog      the log's base name (regular: 'mom6.'//chour;
-!!                             lstop: 'mom6.lstop.'//chour)
-!! @param[in]     lastrestart  passed through to the log
+!! @param[in]     lastrestart  always applied to state_n%time_lastrestart
+!!                             on completion; also passed through to the
+!!                             log when one is written
 !! @param[out]    filecomplete .true. if the file was found complete this call
 !! @param[out]    rc           return code
-subroutine check_file_completion(state_n, comm, isroot, rootpe, startTime, logtime, complog, &
-     lastrestart, filecomplete, rc)
+!! @param[in]     logtime      OPTIONAL -- time basis for log_restart_fh
+!!                             (regular: currTime-logname_fhoffset; lstop:
+!!                             prevring). Log is only written if BOTH
+!!                             logtime and complog are present.
+!! @param[in]     complog      OPTIONAL -- the log's base name (regular:
+!!                             'mom6.'//chour; lstop: 'mom6.lstop.'//chour)
+subroutine check_file_completion(state_n, comm, isroot, rootpe, startTime, lastrestart, &
+     filecomplete, rc, logtime, complog)
   type(outputlog_state_type),  intent(inout) :: state_n
   type(MPI_Comm),               intent(in)    :: comm
   logical,                      intent(in)    :: isroot
   integer,                      intent(in)    :: rootpe
   type(ESMF_Time),              intent(in)    :: startTime
-  type(ESMF_Time),              intent(in)    :: logtime
-  character(len=*),             intent(in)    :: complog
   type(ESMF_Time),              intent(in)    :: lastrestart
   logical,                      intent(out)   :: filecomplete
   integer,                      intent(out)   :: rc
+  type(ESMF_Time),  optional,   intent(in)    :: logtime
+  character(len=*), optional,   intent(in)    :: complog
 
   filecomplete = .false.
   rc = ESMF_SUCCESS
@@ -630,7 +640,7 @@ subroutine check_file_completion(state_n, comm, isroot, rootpe, startTime, logti
   if (filecomplete) then
     state_n%chkfile_nextAdvance = .false.
     state_n%time_lastrestart = lastrestart
-    if (isroot) then
+    if (isroot .and. present(logtime) .and. present(complog)) then
       call log_restart_fh(logtime, startTime, trim(complog), prefixtime=.true., &
            lastrestart=state_n%time_lastrestart, lastoutput=state_n%filename, rc=rc)
     endif

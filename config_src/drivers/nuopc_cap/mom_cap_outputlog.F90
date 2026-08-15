@@ -371,8 +371,8 @@ subroutine outputlog_freqn(mclock, cf_n, state_n, mpicomm, isroot, rootpe, outpu
       endif
     endif
 
-    call check_file_completion(state_n, mpicomm, isroot, rootpe, startTime, &
-         currTime-cf_n%logname_fhoffset, 'mom6.'//chour, lastrestart, filecomplete, rc)
+    call check_file_completion(state_n, mpicomm, isroot, rootpe, startTime, lastrestart, &
+         filecomplete, rc, logtime=currTime-cf_n%logname_fhoffset, complog='mom6.'//chour)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     if (present(filecomplete_out)) filecomplete_out = filecomplete
 
@@ -384,8 +384,8 @@ subroutine outputlog_freqn(mclock, cf_n, state_n, mpicomm, isroot, rootpe, outpu
            outputdir, prevring, rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-      call check_file_completion(state_n, mpicomm, isroot, rootpe, startTime, &
-           prevring, 'mom6.lstop.'//chour, lastrestart, filecomplete, rc)
+      call check_file_completion(state_n, mpicomm, isroot, rootpe, startTime, lastrestart, &
+           filecomplete, rc, logtime=prevring, complog='mom6.lstop.'//chour)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
       if (present(filecomplete_lstop_out)) filecomplete_lstop_out = filecomplete
 
