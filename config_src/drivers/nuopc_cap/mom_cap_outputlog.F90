@@ -196,6 +196,7 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
     state(n)%filename            = ''
     state(n)%createsize          = 0
     state(n)%time_lastrestart    = lastrestart
+    state(n)%ringing             = .false.
 
     ! the time offset in hours required to ensure the alarm rings at multiples of freq(n)
     ! regardless of start day/hour

@@ -7,7 +7,7 @@
 
 module mom_outputlog_methods
 
-use ESMF,              only : ESMF_Alarm, ESMF_TimeInterval, ESMF_Clock
+use ESMF,              only : ESMF_Alarm, ESMF_AlarmIsRinging, ESMF_TimeInterval, ESMF_Clock
 use ESMF,              only : ESMF_SUCCESS, ESMF_Failure, ESMF_Time, ESMF_TimeGet
 use ESMF,              only : ESMF_ClockGetNextTime
 use ESMF,              only : ESMF_AlarmRingerOff, ESMF_AlarmGet, operator(-), operator(*)
@@ -36,6 +36,7 @@ type :: outputlog_state_type
   character(len=256)      :: filename
   integer                 :: createsize
   type(ESMF_Time)         :: time_lastrestart
+  logical                 :: ringing
 end type outputlog_state_type
 
 character(len=*), parameter :: u_FILE_u = &
@@ -509,7 +510,9 @@ subroutine get_ring_state(nextTime, alarm, cf_n, state_n, comm, isroot, rootpe, 
   integer :: nlen, fsize
   character(len=16) :: timestr
 
-  call ESMF_AlarmRingerOff(alarm, rc=rc)
+  rc = ESMF_SUCCESS
+
+  if (ESMF_AlarmIsRinging(alarm, rc=rc)) call ESMF_AlarmRingerOff(alarm, rc=rc)
   if (rc /= ESMF_SUCCESS) return
 
   state_n%chkfile_nextAdvance = .true.
