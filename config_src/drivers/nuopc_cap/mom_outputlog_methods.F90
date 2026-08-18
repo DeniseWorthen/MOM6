@@ -41,12 +41,12 @@ end type outputlog_state_type
 character(len=*), parameter :: u_FILE_u = &
      __FILE__
 
-public :: get_file_state, file_is_complete, get_unlimited_len
+public :: get_file_state, get_ring_state, file_is_complete, get_unlimited_len
 public :: get_timestr, get_importexport
 public :: readnml, debug_info, nf90_err
 public :: outputlog_config_type, outputlog_state_type
 
-public :: setrequest, settype, setprefix, set_toffset, get_ring_state
+public :: setrequest, settype, setprefix, set_toffset
 
 contains
 
@@ -113,6 +113,72 @@ subroutine readnml(fname, cf, debug, errmsg, rc)
   if (ierr /= 0) return
 
 end subroutine readnml
+!> TODO
+!! @param[inout]  state_n    this frequency's state -- mutated here
+!! @param[in]     comm       MPI communicator
+!! @param[in]     isroot     .true. on the root PE
+!! @param[in]     rootpe     the root PE's rank
+!! @param[out]    rc         return code
+subroutine get_ring_state(state_n, comm, isroot, rootpe, rc)
+
+  type(outputlog_state_type),   intent(inout)  :: state_n
+  type(MPI_Comm),                intent(in)    :: comm
+  logical,                       intent(in)    :: isroot
+  integer,                       intent(in)    :: rootpe
+  integer,                       intent(out)   :: rc
+
+  integer :: nlen, fsize
+
+  rc = ESMF_SUCCESS
+
+  call get_file_state(comm, isroot, rootpe, state_n%filename, nlen=nlen, fsize=fsize, rc=rc)
+  rc = merge(ESMF_SUCCESS, ESMF_Failure, rc == 0)
+  if (rc /= ESMF_SUCCESS) return
+
+  state_n%createsize = fsize
+  if (nlen == 0) then
+     state_n%use_filesize = .false.
+  else
+     state_n%use_filesize = .true.
+  endif
+
+end subroutine get_ring_state
+!> TODO
+!!
+subroutine check_file_completion(state_n, lastrestart, comm, isroot, rootpe, startTime, logtime, complog, rc)
+
+  type(outputlog_state_type), intent(inout) :: state_n
+  type(ESMF_Time),            intent(in)    :: lastrestart
+  type(MPI_Comm),             intent(in)    :: comm
+  logical,                    intent(in)    :: isroot
+  integer,                    intent(in)    :: rootpe
+  type(ESMF_Time),            intent(in)    :: startTime
+  type(ESMF_Time),            intent(in)    :: logtime
+  character(len=*),           intent(in)    :: complog
+  integer,                    intent(out)   :: rc
+
+  logical :: filecomplete
+
+  rc = ESMF_SUCCESS
+  if (.not. state_n%chkfile_nextAdvance) return
+
+  filecomplete = file_is_complete(comm, isroot, rootpe, state_n%filename, &
+       state_n%use_filesize, state_n%createsize, rc)
+  rc = merge(ESMF_SUCCESS, ESMF_Failure, rc == 0)
+  if (rc /= ESMF_SUCCESS) return
+
+  if (filecomplete) then
+    state_n%chkfile_nextAdvance = .false.
+    state_n%time_lastrestart = lastrestart
+    if (isroot) then
+      call log_restart_fh(currTime-cf_n%logname_fhoffset, startTime, 'mom6.'//chour, &
+           prefixtime=.true., lastrestart=state_n%time_lastrestart,                  &
+           lastoutput=state_n%filename, rc=rc)
+      if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    endif
+  endif
+
+end subroutine check_file_completion
 !> Retrieve the unlimited dimension length and file size, broadcasting to all PEs
 !!
 !! @param[in]   comm      the MPI communicator
@@ -473,25 +539,6 @@ function set_toffset(hour, freq) result(toffset)
     toffset = 0
   endif
 end function set_toffset
-!> Obtain the model clock's nextTime and Alarm ring status
-!!
-!! @param[in]  mclock     the model clock
-!! @param[in]  alarm      the alarm to check
-!! @param[out] ringing    logical, .true. if the alarm is currently ringing
-!! @param[out] nextTime   the clock's next time (currTime + timeStep)
-!! @param[out] rc         return code
-subroutine get_ring_state(mclock, alarm, ringing, nextTime, rc)
-  type(ESMF_Clock), intent(in)  :: mclock
-  type(ESMF_Alarm), intent(in)  :: alarm
-  logical,          intent(out) :: ringing
-  type(ESMF_Time),  intent(out) :: nextTime
-  integer,          intent(out) :: rc
-
-  ringing = ESMF_AlarmIsRinging(alarm, rc=rc)
-  if (rc /= ESMF_SUCCESS) return
-
-  call ESMF_ClockGetNextTime(mclock, nextTime, rc=rc)
-end subroutine get_ring_state
 !> Return the length of the unlimited dimension
 !!
 !! @param[in]  fname   the file name
