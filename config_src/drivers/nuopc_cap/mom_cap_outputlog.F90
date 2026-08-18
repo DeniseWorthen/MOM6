@@ -40,7 +40,7 @@ use mpp_domains_mod       , only : mpp_get_io_domain_layout
 use NUOPC                 , only : NUOPC_CompAttributeGet
 use ESMF                  , only : ESMF_GridComp, ESMF_GridCompGet, ESMF_VM, ESMF_VMGet
 use ESMF                  , only : ESMF_Time, ESMF_Clock, ESMF_ClockGet, ESMF_Alarm, ESMF_AlarmSet
-use ESMF                  , only : ESMF_ClockGetAlarm, ESMF_AlarmRingerOff
+use ESMF                  , only : ESMF_ClockGetAlarm, ESMF_AlarmRingerOff, ESMF_AlarmIsRinging
 use ESMF                  , only : ESMF_ClockGetNextTime, ESMF_TimeGet, ESMF_TimeInterval
 use ESMF                  , only : ESMF_AlarmGet, ESMF_TimeIntervalSet, ESMF_TimeIntervalPrint
 use ESMF                  , only : ESMF_SUCCESS, ESMF_LogWrite, ESMF_LOGMSG_INFO, ESMF_FAILURE
@@ -48,12 +48,13 @@ use ESMF                  , only : ESMF_LogSetError, ESMF_LogFoundError, ESMF_LO
 use ESMF                  , only : operator(*), operator(+), operator(-), operator(>), operator(==)
 use MOM_cap_methods       , only : ChkErr
 use MOM_cap_time          , only : AlarmInit
+!TODO remove log_restart_fh
 use shr_is_restart_fh_mod , only : log_restart_fh
 use mom_outputlog_methods , only : get_file_state, file_is_complete, get_unlimited_len
 use mom_outputlog_methods , only : get_timestr, get_importexport
 use mom_outputlog_methods , only : readnml, debug_info
 use mom_outputlog_methods , only : outputlog_config_type, outputlog_state_type
-use mom_outputlog_methods , only : set_toffset, get_ring_state
+use mom_outputlog_methods , only : set_toffset, get_ring_state, check_file_completion
 use mpi_f08               , only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
 use netcdf
 
@@ -368,7 +369,7 @@ subroutine outputlog_freqn(mclock, cf_n, state_n, mpicomm, isroot, rootpe, outpu
            //trim(cf_n%fnamesuffix)
 
       ! TODO: ? get_ring_filestate
-      call get_ring_state(state_n, mpicomm, isroot, rootpe, outputdir, rc)
+      call get_ring_state(state_n, mpicomm, isroot, rootpe, rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
       if (debug_onroot) then
@@ -379,7 +380,7 @@ subroutine outputlog_freqn(mclock, cf_n, state_n, mpicomm, isroot, rootpe, outpu
     endif ! state_n%ringing
 
     call check_file_completion(state_n, lastrestart, mpicomm, isroot, rootpe, startTime, &
-         logtime=currTime-cf_n%logname_fhoffset, complog='mom6.'//chour, rc)
+         logtime=currTime-cf_n%logname_fhoffset, complog='mom6.'//chour, rc=rc)
     rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 

@@ -7,11 +7,11 @@
 
 module mom_outputlog_methods
 
-use ESMF,              only : ESMF_Alarm, ESMF_TimeInterval, ESMF_Clock
-use ESMF,              only : ESMF_SUCCESS, ESMF_Failure, ESMF_Time, ESMF_TimeGet
-use ESMF,              only : ESMF_AlarmIsRinging, ESMF_ClockGetNextTime
-use MOM_cap_methods,   only : ChkErr
-use mpi_f08,           only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
+use ESMF,                   only : ESMF_Alarm, ESMF_TimeInterval, ESMF_Clock
+use ESMF,                   only : ESMF_SUCCESS, ESMF_Failure, ESMF_Time, ESMF_TimeGet
+use MOM_cap_methods,        only : ChkErr
+use shr_is_restart_fh_mod , only : log_restart_fh
+use mpi_f08,                only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
 use netcdf
 
 implicit none; private
@@ -42,10 +42,9 @@ character(len=*), parameter :: u_FILE_u = &
      __FILE__
 
 public :: get_file_state, get_ring_state, file_is_complete, get_unlimited_len
-public :: get_timestr, get_importexport
+public :: check_file_completion, get_timestr, get_importexport
 public :: readnml, debug_info, nf90_err
 public :: outputlog_config_type, outputlog_state_type
-
 public :: setrequest, settype, setprefix, set_toffset
 
 contains
@@ -147,15 +146,15 @@ end subroutine get_ring_state
 !!
 subroutine check_file_completion(state_n, lastrestart, comm, isroot, rootpe, startTime, logtime, complog, rc)
 
-  type(outputlog_state_type), intent(inout) :: state_n
-  type(ESMF_Time),            intent(in)    :: lastrestart
-  type(MPI_Comm),             intent(in)    :: comm
-  logical,                    intent(in)    :: isroot
-  integer,                    intent(in)    :: rootpe
-  type(ESMF_Time),            intent(in)    :: startTime
-  type(ESMF_Time),            intent(in)    :: logtime
-  character(len=*),           intent(in)    :: complog
-  integer,                    intent(out)   :: rc
+  type(outputlog_state_type),  intent(inout) :: state_n
+  type(ESMF_Time),             intent(in)    :: lastrestart
+  type(MPI_Comm),              intent(in)    :: comm
+  logical,                     intent(in)    :: isroot
+  integer,                     intent(in)    :: rootpe
+  type(ESMF_Time),             intent(in)    :: startTime
+  type(ESMF_Time),             intent(in)    :: logtime
+  character(len=*),            intent(in)    :: complog
+  integer,                     intent(out)   :: rc
 
   logical :: filecomplete
 
@@ -171,10 +170,9 @@ subroutine check_file_completion(state_n, lastrestart, comm, isroot, rootpe, sta
     state_n%chkfile_nextAdvance = .false.
     state_n%time_lastrestart = lastrestart
     if (isroot) then
-      call log_restart_fh(currTime-cf_n%logname_fhoffset, startTime, 'mom6.'//chour, &
-           prefixtime=.true., lastrestart=state_n%time_lastrestart,                  &
-           lastoutput=state_n%filename, rc=rc)
-      if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       call log_restart_fh(logtime, startTime, complog, prefixtime=.true., &
+            lastrestart=state_n%time_lastrestart, lastoutput=state_n%filename, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
     endif
   endif
 
