@@ -193,8 +193,7 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
 
     state(n)%chkfile_nextAdvance = .false.
     state(n)%use_filesize        = .false.
-    state(n)%complete            = .false.
-    state(n)%filename            = ''
+    state(n)%filecomplete        = .false.
     state(n)%createsize          = 0
     state(n)%time_lastrestart    = lastrestart
 
@@ -373,7 +372,7 @@ subroutine outputlog_freqn(mclock, cf_n, state_n, mpicomm, isroot, rootpe, outpu
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
       if (debug_onroot) then
-        print '(A,2(A,L),A,i16)',trim(subname)//' fname '//trim(state_n%filename)//'  '       &
+        print '(A,2(A,L),A,i16)',trim(subname)//' fname '//state_n%filename//'  '       &
              //trim(importexport),' checkflag ',state_n%chkfile_nextAdvance,' use_filesize ',  &
              state_n%use_filesize, '  ',state_n%createsize
       endif
@@ -401,7 +400,7 @@ subroutine outputlog_freqn(mclock, cf_n, state_n, mpicomm, isroot, rootpe, outpu
     !     endif
     !   endif
     ! endif
-    if (debug_onroot) call debug_info(trim(subname)//'  ',trim(state_n%filename), &
+    if (debug_onroot) call debug_info(trim(subname)//'  ',state_n%filename, &
          state_n%chkfile_nextAdvance, state_n%createsize, importexport)
 
     if (lstop) then
@@ -440,7 +439,7 @@ subroutine outputlog_freqn(mclock, cf_n, state_n, mpicomm, isroot, rootpe, outpu
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
         endif
       endif
-      if (debug_onroot) call debug_info(trim(subname)//' lstop ',trim(state_n%filename), &
+      if (debug_onroot) call debug_info(trim(subname)//' lstop ',state_n%filename, &
            state_n%chkfile_nextAdvance, state_n%createsize, importexport)
     endif ! lstop
   endif ! output requested

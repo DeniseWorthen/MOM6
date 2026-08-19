@@ -29,14 +29,13 @@ type :: outputlog_config_type
 end type outputlog_config_type
 
 type :: outputlog_state_type
-  logical                 :: chkfile_nextAdvance
-  logical                 :: use_filesize
-  logical                 :: ringing
-  logical                 :: complete
-  character(len=256)      :: filename
-  integer                 :: createsize
-  type(ESMF_Time)         :: time_lastrestart
-  type(ESMF_Time)         :: nextTime
+  logical                       :: chkfile_nextAdvance
+  logical                       :: use_filesize
+  logical                       :: ringing
+  logical                       :: filecomplete
+  character(len=:), allocatable :: filename
+  integer                       :: createsize
+  type(ESMF_Time)               :: time_lastrestart
 end type outputlog_state_type
 
 character(len=*), parameter :: u_FILE_u = &
@@ -135,7 +134,7 @@ subroutine get_ring_state(state_n, comm, isroot, rootpe, rc)
   rc = merge(ESMF_SUCCESS, ESMF_Failure, rc == 0)
   if (rc /= ESMF_SUCCESS) return
 
-  state_n%complete = .false.
+  state_n%filecomplete = .false.
   state_n%createsize = fsize
   if (nlen == 0) then
      state_n%use_filesize = .false.
