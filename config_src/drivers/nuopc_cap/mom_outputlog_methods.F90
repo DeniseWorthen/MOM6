@@ -31,10 +31,11 @@ end type outputlog_config_type
 type :: outputlog_state_type
   logical                 :: chkfile_nextAdvance
   logical                 :: use_filesize
+  logical                 :: ringing
+  logical                 :: complete
   character(len=256)      :: filename
   integer                 :: createsize
   type(ESMF_Time)         :: time_lastrestart
-  logical                 :: ringing
   type(ESMF_Time)         :: nextTime
 end type outputlog_state_type
 
@@ -120,11 +121,11 @@ end subroutine readnml
 !! @param[out]    rc         return code
 subroutine get_ring_state(state_n, comm, isroot, rootpe, rc)
 
-  type(outputlog_state_type),   intent(inout)  :: state_n
-  type(MPI_Comm),                intent(in)    :: comm
-  logical,                       intent(in)    :: isroot
-  integer,                       intent(in)    :: rootpe
-  integer,                       intent(out)   :: rc
+  type(outputlog_state_type), intent(inout) :: state_n
+  type(MPI_Comm),             intent(in)    :: comm
+  logical,                    intent(in)    :: isroot
+  integer,                    intent(in)    :: rootpe
+  integer,                    intent(out)   :: rc
 
   integer :: nlen, fsize
 
@@ -134,6 +135,7 @@ subroutine get_ring_state(state_n, comm, isroot, rootpe, rc)
   rc = merge(ESMF_SUCCESS, ESMF_Failure, rc == 0)
   if (rc /= ESMF_SUCCESS) return
 
+  state_n%complete = .false.
   state_n%createsize = fsize
   if (nlen == 0) then
      state_n%use_filesize = .false.
@@ -156,17 +158,17 @@ subroutine check_file_completion(state_n, lastrestart, comm, isroot, rootpe, sta
   character(len=*),            intent(in)    :: complog
   integer,                     intent(out)   :: rc
 
-  logical :: filecomplete
+  !logical :: filecomplete
 
   rc = ESMF_SUCCESS
   if (.not. state_n%chkfile_nextAdvance) return
 
-  filecomplete = file_is_complete(comm, isroot, rootpe, state_n%filename, &
+  state_n%filecomplete = file_is_complete(comm, isroot, rootpe, state_n%filename, &
        state_n%use_filesize, state_n%createsize, rc)
   rc = merge(ESMF_SUCCESS, ESMF_Failure, rc == 0)
   if (rc /= ESMF_SUCCESS) return
 
-  if (filecomplete) then
+  if (state_n%filecomplete) then
     state_n%chkfile_nextAdvance = .false.
     state_n%time_lastrestart = lastrestart
     if (isroot) then

@@ -193,6 +193,7 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
 
     state(n)%chkfile_nextAdvance = .false.
     state(n)%use_filesize        = .false.
+    state(n)%complete            = .false.
     state(n)%filename            = ''
     state(n)%createsize          = 0
     state(n)%time_lastrestart    = lastrestart
@@ -322,7 +323,7 @@ subroutine outputlog_freqn(mclock, cf_n, state_n, mpicomm, isroot, rootpe, outpu
   ! local variables
   type(ESMF_Time)     :: nextTime, currTime, startTime, prevring
   logical             :: lstop
-  logical             :: filecomplete
+  !logical             :: filecomplete
   integer             :: nlen, fsize
   character(len=3)    :: chour
   character(len=40)   :: importexport
@@ -345,7 +346,6 @@ subroutine outputlog_freqn(mclock, cf_n, state_n, mpicomm, isroot, rootpe, outpu
   nlen  = nf90_fill_int
 
   write(chour,'(I2.2,A)') cf_n%opt_n,'h'
-  filecomplete = .false.
 
   if (cf_n%requested) then
     call ESMF_ClockGetAlarm(mclock, alarmname=trim(cf_n%alarm_name), alarm=cf_n%alarm, rc=rc)
@@ -363,7 +363,7 @@ subroutine outputlog_freqn(mclock, cf_n, state_n, mpicomm, isroot, rootpe, outpu
     if (state_n%ringing) then
       state_n%chkfile_nextAdvance = .true.
 
-      timestr = get_timestr(state_n%nextTime-cf_n%filename_fhoffset, rc=rc)
+      timestr = get_timestr(nextTime-cf_n%filename_fhoffset, rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
       state_n%filename = trim(outputdir)//trim(cf_n%fnameprefix)//trim(timestr)//'.nc' &
            //trim(cf_n%fnamesuffix)
@@ -426,12 +426,12 @@ subroutine outputlog_freqn(mclock, cf_n, state_n, mpicomm, isroot, rootpe, outpu
       rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-      filecomplete = file_is_complete(mpicomm, isroot, rootpe, state_n%filename, &
+      state_n%filecomplete = file_is_complete(mpicomm, isroot, rootpe, state_n%filename, &
            state_n%use_filesize, state_n%createsize, rc)
       rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-      if (filecomplete) then
+      if (state_n%filecomplete) then
         state_n%chkfile_nextAdvance = .false.
         state_n%time_lastrestart = lastrestart
         if (isroot) then
