@@ -350,10 +350,9 @@ subroutine outputlog_freqn(mclock, cf_n, state_n, mpicomm, isroot, rootpe, outpu
     call ESMF_ClockGetAlarm(mclock, alarmname=trim(cf_n%alarm_name), alarm=cf_n%alarm, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    state_n%ringing = ESMF_AlarmIsRinging(cf_n%alarm, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
     if (ESMF_AlarmIsRinging(cf_n%alarm, rc=rc)) then
-      if (ChkErr(rc,__LINE__,u_FILE_u)) return
-      state_n%ringing = .true.
-
       call ESMF_AlarmRingerOff(cf_n%alarm, rc=rc )
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
     endif
@@ -375,6 +374,7 @@ subroutine outputlog_freqn(mclock, cf_n, state_n, mpicomm, isroot, rootpe, outpu
         print '(A,2(A,L),A,i16)',trim(subname)//' fname '//state_n%filename//'  '       &
              //trim(importexport),' checkflag ',state_n%chkfile_nextAdvance,' use_filesize ',  &
              state_n%use_filesize, '  ',state_n%createsize
+
       endif
     endif ! state_n%ringing
 
@@ -383,23 +383,6 @@ subroutine outputlog_freqn(mclock, cf_n, state_n, mpicomm, isroot, rootpe, outpu
     rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    ! if (state_n%chkfile_nextAdvance) then
-    !   filecomplete = file_is_complete(mpicomm, isroot, rootpe, state_n%filename, &
-    !        state_n%use_filesize, state_n%createsize, rc)
-    !   rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
-    !   if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-    !   if (filecomplete) then
-    !     state_n%chkfile_nextAdvance = .false.
-    !     state_n%time_lastrestart = lastrestart
-    !     if (isroot) then
-    !       call log_restart_fh(currTime-cf_n%logname_fhoffset, startTime, 'mom6.'//chour, &
-    !            prefixtime=.true., lastrestart=state_n%time_lastrestart,                  &
-    !            lastoutput=state_n%filename, rc=rc)
-    !       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    !     endif
-    !   endif
-    ! endif
     if (debug_onroot) call debug_info(trim(subname)//'  ',state_n%filename, &
          state_n%chkfile_nextAdvance, state_n%createsize, importexport)
 
