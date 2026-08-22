@@ -21,7 +21,7 @@ type :: outputlog_config_type
   integer                 :: opt_n
   logical                 :: requested
   character(len=7)        :: timereduce
-  character(len=13)       :: fnameprefix   ! 12 user chars max + appended '_' -- see setprefix
+  character(len=13)       :: fnameprefix   ! 12 user chars max + appended '_'
   character(len=4)        :: fnamesuffix
   type(ESMF_Alarm)        :: alarm
   type(ESMF_TimeInterval) :: logname_fhoffset
@@ -35,20 +35,28 @@ type :: outputlog_state_type
   logical                       :: filecomplete
   character(len=:), allocatable :: filename
   integer                       :: createsize
+  integer                       :: completesize
   type(ESMF_Time)               :: time_lastrestart
 end type outputlog_state_type
+
+type :: outputlog_modeltime_type
+  type(ESMF_Time)         :: startTime
+  type(ESMF_Time)         :: currTime
+  type(ESMF_Time)         :: nextTime
+  type(ESMF_Time)         :: prevRing
+  type(ESMF_TimeInterval) :: tincrement
+end type outputlog_modeltime_type
 
 character(len=*), parameter :: u_FILE_u = &
      __FILE__
 
+public :: outputlog_config_type, outputlog_state_type, outputlog_modeltime_type
 public :: get_file_state, get_ring_state, file_is_complete, get_unlimited_len
-public :: check_file_completion, get_timestr, get_importexport
+public :: get_timestr, get_importexport
 public :: readnml, debug_info, nf90_err
-public :: outputlog_config_type, outputlog_state_type
 public :: setrequest, settype, setprefix, set_toffset
 
 contains
-
 !> Read nml options to configure output logging
 !!
 !! @param[in]     fname    input namelist file
@@ -112,7 +120,8 @@ subroutine readnml(fname, cf, debug, errmsg, rc)
   if (ierr /= 0) return
 
 end subroutine readnml
-!> TODO
+!> Get the state of the netcdf output file at ring time
+!!
 !! @param[inout]  state_n    this frequency's state -- mutated here
 !! @param[in]     comm       MPI communicator
 !! @param[in]     isroot     .true. on the root PE
@@ -143,41 +152,6 @@ subroutine get_ring_state(state_n, comm, isroot, rootpe, rc)
   endif
 
 end subroutine get_ring_state
-!> TODO
-!!
-subroutine check_file_completion(state_n, lastrestart, comm, isroot, rootpe, startTime, logtime, complog, rc)
-
-  type(outputlog_state_type),  intent(inout) :: state_n
-  type(ESMF_Time),             intent(in)    :: lastrestart
-  type(MPI_Comm),              intent(in)    :: comm
-  logical,                     intent(in)    :: isroot
-  integer,                     intent(in)    :: rootpe
-  type(ESMF_Time),             intent(in)    :: startTime
-  type(ESMF_Time),             intent(in)    :: logtime
-  character(len=*),            intent(in)    :: complog
-  integer,                     intent(out)   :: rc
-
-  !logical :: filecomplete
-
-  rc = ESMF_SUCCESS
-  if (.not. state_n%chkfile_nextAdvance) return
-
-  state_n%filecomplete = file_is_complete(comm, isroot, rootpe, state_n%filename, &
-       state_n%use_filesize, state_n%createsize, rc)
-  rc = merge(ESMF_SUCCESS, ESMF_Failure, rc == 0)
-  if (rc /= ESMF_SUCCESS) return
-
-  if (state_n%filecomplete) then
-    state_n%chkfile_nextAdvance = .false.
-    state_n%time_lastrestart = lastrestart
-    if (isroot) then
-       call log_restart_fh(logtime, startTime, complog, prefixtime=.true., &
-            lastrestart=state_n%time_lastrestart, lastoutput=state_n%filename, rc=rc)
-       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    endif
-  endif
-
-end subroutine check_file_completion
 !> Retrieve the unlimited dimension length and file size, broadcasting to all PEs
 !!
 !! @param[in]   comm      the MPI communicator
@@ -264,7 +238,6 @@ logical function file_is_complete(comm, isroot, rootpe, fname, chk4size, creates
   rc = ierr
 
 end function file_is_complete
-
 !> Validate requested output frequencies from namelist entries
 !!
 !! @param[in]   validfreqs     supported output frequencies (hours)
