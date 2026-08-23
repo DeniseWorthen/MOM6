@@ -60,7 +60,7 @@ use netcdf
 implicit none; private
 
 public :: outputlog_init, outputlog_run, outputlog_restart
-public :: outputlog_freqn
+public :: track_freqn
 
 ! the allowable output frequency for MOM6 history, in hours only
 integer, parameter :: n_freq  = 4
@@ -326,7 +326,7 @@ end subroutine outputlog_run
 !! @param[in]     lstop             logical flag for checking files at finalize
 !! @param[out]    rc                return code
 subroutine track_freqn(mtime, cf_n, state_n, comm, isroot, rootpe, outputdir, lastrestart, &
-     debug_onroot, atStopTme, rc)
+     debug_onroot, lstop, rc)
 
   type(outputlog_modeltime_type), intent(in)    :: mtime
   type(outputlog_config_type),    intent(inout) :: cf_n
@@ -341,11 +341,12 @@ subroutine track_freqn(mtime, cf_n, state_n, comm, isroot, rootpe, outputdir, la
   integer,                        intent(out)   :: rc
 
   ! local variables
-  character(len=3)    :: chour
-  character(len=40)   :: importexport
-  character(len=16)   :: timestr
-  character(len=14)   :: logfile
-  character(len=256)  :: subname='MOM_cap:(track_freqn)'
+  integer            :: nlen, fsize
+  character(len=3)   :: chour
+  character(len=40)  :: importexport
+  character(len=16)  :: timestr
+  character(len=14)  :: logfile
+  character(len=256) :: subname='MOM_cap:(track_freqn)'
   !----------------------------------------------------------------------------
 
   rc = ESMF_SUCCESS
@@ -410,7 +411,7 @@ subroutine track_freqn(mtime, cf_n, state_n, comm, isroot, rootpe, outputdir, la
       timestr = get_timestr(mtime%prevring, rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
     else
-      timestr = get_timestr(mtime%prevring-30*cf_n%opt_n*tincrement, rc=rc)
+      timestr = get_timestr(mtime%prevring-30*cf_n%opt_n*mtime%tincrement, rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
     endif
     state_n%filename = trim(outputdir)//trim(cf_n%fnameprefix)//trim(timestr)//'.nc' &
