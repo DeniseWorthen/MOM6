@@ -37,6 +37,7 @@ type :: outputlog_state_type
   integer                       :: createsize
   integer                       :: completesize
   type(ESMF_Time)               :: time_lastrestart
+  type(ESMF_Time)               :: time_logfile
 end type outputlog_state_type
 
 type :: outputlog_modeltime_type
