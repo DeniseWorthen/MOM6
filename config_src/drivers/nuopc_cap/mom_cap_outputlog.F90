@@ -307,10 +307,6 @@ subroutine outputlog_run(mclock, atStopTime, rc)
 
       call ESMF_AlarmGet(cf(n)%alarm, prevRingTime=modeltime%prevring, rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-      importexport = get_importexport(modeltime%currTime, modeltime%nextTime, rc=rc)
-      if (ChkErr(rc,__LINE__,u_FILE_u)) return
-      timestr = get_timestr(modeltime%prevring, rc=rc)
-      if(is_root_pe()) print *,'XXX '//importexport//'  prevRing '//timestr
 
       state(n)%ringing = ESMF_AlarmIsRinging(cf(n)%alarm, rc=rc)
       if (state(n)%ringing) call ESMF_AlarmRingerOff(cf(n)%alarm, rc=rc)
@@ -421,14 +417,9 @@ subroutine track_freqn(mtime, cf_n, state_n, comm, isroot, rootpe, outputdir, la
     else
      timestr = get_timestr(mtime%prevring-30*cf_n%opt_n*mtime%tincrement, rc=rc)
      if (ChkErr(rc,__LINE__,u_FILE_u)) return
-     timestr = get_timestr(mtime%prevring,rc=rc)
-     !if(debug_onroot)print *,'XXX in freqn lstop prevring '//timestr
-     timestr = get_timestr(mtime%prevring-30*cf_n%opt_n*mtime%tincrement,rc=rc)
-     !if(debug_onroot)print *,'XXX in freqn lstop timestr '//timestr
     endif
     state_n%filename = trim(outputdir)//trim(cf_n%fnameprefix)//trim(timestr)//'.nc' &
          //trim(cf_n%fnamesuffix)
-    !if(debug_onroot)print *,'XXX in freqn lstop filename '//state_n%filename
 
     call get_file_state(comm, isroot, rootpe, state_n%filename, nlen=nlen, fsize=fsize, rc=rc)
     rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)

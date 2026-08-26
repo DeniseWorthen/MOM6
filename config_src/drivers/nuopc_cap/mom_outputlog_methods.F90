@@ -10,7 +10,6 @@ module mom_outputlog_methods
 use ESMF,                   only : ESMF_Alarm, ESMF_TimeInterval, ESMF_Clock
 use ESMF,                   only : ESMF_SUCCESS, ESMF_Failure, ESMF_Time, ESMF_TimeGet
 use MOM_cap_methods,        only : ChkErr
-use shr_is_restart_fh_mod , only : log_restart_fh
 use mpi_f08,                only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
 use netcdf
 
