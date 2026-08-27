@@ -305,9 +305,8 @@ subroutine outputlog_run(mclock, atStopTime, rc)
       call ESMF_ClockGetAlarm(mclock, alarmname=trim(cf(n)%alarm_name), alarm=cf(n)%alarm, rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-      call ESMF_AlarmGet(cf(n)%alarm, prevRingTime=modeltime%prevring, rc=rc)
+      call ESMF_AlarmGet(cf(n)%alarm, prevRingTime=state(n)%prevring, rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
       state(n)%ringing = ESMF_AlarmIsRinging(cf(n)%alarm, rc=rc)
       if (state(n)%ringing) call ESMF_AlarmRingerOff(cf(n)%alarm, rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -390,6 +389,7 @@ subroutine track_freqn(mtime, cf_n, state_n, comm, isroot, rootpe, outputdir, la
       endif
     endif ! state_n%ringing
 
+    ! assumes at least one regular completion has occurred for this frequency before lstop is ever checked
     if (state_n%chkfile_nextAdvance) then
       state_n%filecomplete = file_is_complete(comm, isroot, rootpe, state_n%filename, state_n%use_filesize, &
            state_n%createsize, rc)
@@ -412,10 +412,10 @@ subroutine track_freqn(mtime, cf_n, state_n, comm, isroot, rootpe, outputdir, la
     ! at lstop, use prevRing in place of currTime to allow for stopping between averaging intervals
     ! prevRing == currTime if stopping on intervals
     if (trim(cf_n%timereduce) == 'none') then
-     timestr = get_timestr(mtime%prevring, rc=rc)
+     timestr = get_timestr(state_n%prevring, rc=rc)
      if (ChkErr(rc,__LINE__,u_FILE_u)) return
     else
-     timestr = get_timestr(mtime%prevring-30*cf_n%opt_n*mtime%tincrement, rc=rc)
+     timestr = get_timestr(state_n%prevring-30*cf_n%opt_n*mtime%tincrement, rc=rc)
      if (ChkErr(rc,__LINE__,u_FILE_u)) return
     endif
     state_n%filename = trim(outputdir)//trim(cf_n%fnameprefix)//trim(timestr)//'.nc' &
@@ -425,12 +425,12 @@ subroutine track_freqn(mtime, cf_n, state_n, comm, isroot, rootpe, outputdir, la
     rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     ! file lands complete; verify size against tracked completesize
-    state_n%filecomplete = (nlen == 1 .and. fsize == state_n%completesize)
+    state_n%filecomplete = (nlen > 0 .and. fsize == state_n%completesize)
 
     if (state_n%filecomplete) then
       state_n%chkfile_nextAdvance = .false.
       state_n%time_lastrestart = lastrestart
-      state_n%time_logfile = mtime%prevring
+      state_n%time_logfile = state_n%prevring
     endif
     if (debug_onroot) call debug_info(trim(subname)//' lstop ',state_n%filename, &
          state_n%chkfile_nextAdvance, state_n%createsize, importexport)

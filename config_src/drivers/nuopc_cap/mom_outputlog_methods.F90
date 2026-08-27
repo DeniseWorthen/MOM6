@@ -37,13 +37,13 @@ type :: outputlog_state_type
   integer                       :: completesize
   type(ESMF_Time)               :: time_lastrestart
   type(ESMF_Time)               :: time_logfile
+  type(ESMF_Time)               :: prevRing
 end type outputlog_state_type
 
 type :: outputlog_modeltime_type
   type(ESMF_Time)         :: startTime
   type(ESMF_Time)         :: currTime
   type(ESMF_Time)         :: nextTime
-  type(ESMF_Time)         :: prevRing
   type(ESMF_TimeInterval) :: tincrement
 end type outputlog_modeltime_type
 
