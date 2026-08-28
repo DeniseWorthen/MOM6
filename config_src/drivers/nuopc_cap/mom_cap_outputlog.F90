@@ -187,7 +187,6 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
     else
       cf(n)%fnamesuffix     = '.000'
     endif
-    cf(n)%logname_fhoffset  = 0*modeltime%tincrement
     cf(n)%filename_fhoffset = 0*modeltime%tincrement
 
     state(n)%filename            = ' '
@@ -228,10 +227,8 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
 
   do n = 1,n_freq
     if (trim(cf(n)%timereduce) == 'none') then
-      cf(n)%logname_fhoffset  = 0*modeltime%tincrement
       cf(n)%filename_fhoffset = 60*freq(n)*modeltime%tincrement
     else
-      cf(n)%logname_fhoffset  = 60*freq(n)*modeltime%tincrement
       cf(n)%filename_fhoffset = 90*freq(n)*modeltime%tincrement
     endif
   enddo
@@ -314,7 +311,6 @@ subroutine outputlog_run(mclock, atStopTime, rc)
       call track_freqn(modeltime, cf(n), state(n), mpicomm, is_root_pe(), root_pe(), outputdir, &
            lastrestart, debug_onroot, lstop, rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
       ! if complete, write a logfile
       if (is_root_pe()) then
         if (state(n)%filecomplete) then
@@ -403,7 +399,7 @@ subroutine track_freqn(mtime, cf_n, state_n, comm, isroot, rootpe, outputdir, la
 
         state_n%chkfile_nextAdvance = .false.
         state_n%time_lastrestart = lastrestart
-        state_n%time_logfile = mtime%currTime-cf_n%logname_fhoffset
+        state_n%time_logfile = mtime%currTime
       endif
     endif
     if (debug_onroot) call debug_info(trim(subname)//'  ',state_n%filename, state_n%chkfile_nextAdvance, &
