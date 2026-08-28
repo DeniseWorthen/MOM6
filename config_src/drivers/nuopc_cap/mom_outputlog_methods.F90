@@ -23,7 +23,6 @@ type :: outputlog_config_type
   character(len=13)       :: fnameprefix   ! 12 user chars max + appended '_'
   character(len=4)        :: fnamesuffix
   type(ESMF_Alarm)        :: alarm
-  type(ESMF_TimeInterval) :: logname_fhoffset
   type(ESMF_TimeInterval) :: filename_fhoffset
 end type outputlog_config_type
 
