@@ -50,7 +50,7 @@ character(len=*), parameter :: u_FILE_u = &
      __FILE__
 
 public :: outputlog_config_type, outputlog_state_type, outputlog_modeltime_type
-public :: get_file_state, get_ring_state, file_is_complete, get_unlimited_len
+public :: get_file_state, get_file_state_atring, file_is_complete, get_unlimited_len
 public :: get_timestr, get_importexport
 public :: readnml, debug_info, nf90_err
 public :: setrequest, settype, setprefix, set_toffset
@@ -126,7 +126,7 @@ end subroutine readnml
 !! @param[in]     isroot     .true. on the root PE
 !! @param[in]     rootpe     the root PE's rank
 !! @param[out]    rc         return code
-subroutine get_ring_state(state_n, comm, isroot, rootpe, rc)
+subroutine get_file_state_atring(state_n, comm, isroot, rootpe, rc)
 
   type(outputlog_state_type), intent(inout) :: state_n
   type(MPI_Comm),             intent(in)    :: comm
@@ -150,7 +150,7 @@ subroutine get_ring_state(state_n, comm, isroot, rootpe, rc)
      state_n%use_filesize = .true.
   endif
 
-end subroutine get_ring_state
+end subroutine get_file_state_atring
 !> Retrieve the unlimited dimension length and file size, broadcasting to all PEs
 !!
 !! @param[in]   comm      the MPI communicator
@@ -568,7 +568,6 @@ function get_importexport(currTime, nextTime, rc) result(importexport)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
   importexport = trim(import_timestr)//'  '//trim(export_timestr)
 end function get_importexport
-
 !> Write debug info to stdout, only called on root pe
 !!
 !! @param[in]    tag            an information tag
@@ -605,7 +604,6 @@ subroutine debug_info(tag,fname,chkflag,filesize,timestring)
     print '(A)',trim(msgString)
   endif
 end subroutine debug_info
-
 !> Handle netcdf errors
 !!
 !! @param[in]  ierr        the error code

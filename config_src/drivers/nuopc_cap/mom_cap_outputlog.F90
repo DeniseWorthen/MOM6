@@ -53,7 +53,7 @@ use mom_outputlog_methods , only : get_file_state, file_is_complete, get_unlimit
 use mom_outputlog_methods , only : get_timestr, get_importexport
 use mom_outputlog_methods , only : readnml, debug_info
 use mom_outputlog_methods , only : outputlog_config_type, outputlog_state_type, outputlog_modeltime_type
-use mom_outputlog_methods , only : set_toffset, get_ring_state
+use mom_outputlog_methods , only : set_toffset, get_file_state_atring
 use mpi_f08               , only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
 use netcdf
 
@@ -382,8 +382,7 @@ subroutine track_freqn(mtime, cf_n, state_n, comm, isroot, rootpe, outputdir, la
       state_n%filename = trim(outputdir)//trim(cf_n%fnameprefix)//trim(timestr)//'.nc' &
            //trim(cf_n%fnamesuffix)
 
-      ! TODO: ? get_ring_filestate
-      call get_ring_state(state_n, comm, isroot, rootpe, rc=rc)
+      call get_filestate_atring(state_n, comm, isroot, rootpe, rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
       if (debug_onroot) then
