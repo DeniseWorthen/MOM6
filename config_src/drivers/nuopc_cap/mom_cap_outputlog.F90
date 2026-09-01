@@ -124,12 +124,16 @@ character(len=*), parameter :: u_FILE_u = &
      __FILE__
 
 contains
-!> Initialize a set of Alarms at the allowed output frequencies
+!> Initialize the configuration of the outputlog feature
+!!
+!! `outputlog_init` is called from [MOM_cap_mod::ModelSetRunClock][1].
 !!
 !! @param      gcomp        an ESMF_GridComp object
 !! @param      clock        an ESMF_Clock object
 !! @param[in]  ocean_grid   ocean grid
 !! @param[out] rc           return code
+!!
+!! [1]: \mom6_nuopc_url/mom_cap.F90#L2095
 subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
 
   type(ESMF_GridComp)  :: gcomp
@@ -261,9 +265,13 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
 end subroutine outputlog_init
 !> Wrapper for logging output at single frequency
 !!
+!! ``outputlog_run`` is called during once during each [MOM_cap_mod::ModelAdvance][1]
+!!
 !! @param clock        an ESMF_Clock object
 !! @param atStopTime   when present, checks for final output file
 !! @param rc           return code
+!!
+!! [1]: \mom6_nuopc_url/mom_cap.F90#L1746
 subroutine outputlog_run(mclock, atStopTime, rc)
   type(ESMF_Clock)              :: mclock
   logical, intent(in), optional :: atStopTime
@@ -435,9 +443,14 @@ subroutine track_freqn(mtime, cf_n, state_n, comm, isroot, rootpe, outputdir, la
 end subroutine track_freqn
 !> Check all restart files to determine if output has been completed
 !!
+!! ``outputlog_restart`` is called whenever restart-writing is triggered in
+!! [MOM_cap_mod::ModelAdvance][1]
+!!
 !! @param[in]    clock            an ESMF_Clock object
 !! @param[in]    num_rest_files   the number of restart files
 !! @param[out]   rc               return code
+!!
+!! [1]: \mom6_nuopc_url/mom_cap.F90#L1746)
 subroutine outputlog_restart(mclock, num_rest_files, rc)
   type(ESMF_Clock)     :: mclock
   integer, intent(in)  :: num_rest_files
