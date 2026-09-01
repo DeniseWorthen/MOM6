@@ -1,4 +1,4 @@
-!> This module contains a set of subroutines that check if MOM restart and history files
+!>  This module contains a set of subroutines that check if MOM restart and history files
 !! have been written and closed. This file is specific to UWM operational requirements
 !! and configurations (eg specific output frequencies in hours) and may break if used outside
 !! the scope of intended use.
@@ -62,9 +62,9 @@ implicit none; private
 public :: outputlog_init, outputlog_run, outputlog_restart
 public :: track_freqn
 
-! the allowable output frequency for MOM6 history, in hours only
-integer, parameter :: n_freq  = 4
-integer, parameter, dimension(n_freq) :: freq = (/1, 3, 6, 24/)
+integer, parameter :: n_freq  = 4                               !< the number of allowable tracked frequencies
+integer, parameter, dimension(n_freq) :: freq = (/1, 3, 6, 24/) !< the allowed tracked frequency hours
+
 ! TODO: for multiple output freq in same run, a different known filename
 ! root for different freqs needs to be read in, consistent with the diag table
 
@@ -106,30 +106,29 @@ integer, parameter, dimension(n_freq) :: freq = (/1, 3, 6, 24/)
 ! When a file is determined to be complete, a log file is recorded containing the forecast hour, the
 ! valid time, the name of the output file and the last completed restart file.
 
-type(outputlog_config_type) :: cf(n_freq)
-type(outputlog_state_type)  :: state(n_freq)
-type(outputlog_modeltime_type) :: modeltime
+type(outputlog_config_type) :: cf(n_freq)    !< a structure containing the configuration, per frequency
+type(outputlog_state_type)  :: state(n_freq) !< a structure containing the time dependent file state, per frequency
+type(outputlog_modeltime_type) :: modeltime  !< a structure containing the current model time state
 
-type(ESMF_VM)           :: vm
-type(ESMF_Time)         :: lastrestart
-type(MPI_Comm)          :: mpicomm
+type(ESMF_VM)           :: vm                !< the component VM
+type(ESMF_Time)         :: lastrestart       !< an ESMF_Time of the last written restart
+type(MPI_Comm)          :: mpicomm           !< the model communicator
 
-integer                 :: toffset
-integer                 :: nfiles
-logical                 :: debug_onroot
-character(len=256)      :: restartdir
-character(len=256)      :: outputdir
-character(len=256)      :: errmsg
-character(len=*), parameter :: u_FILE_u = &
-     __FILE__
+integer                 :: toffset           !< the timeoffset in hours
+integer                 :: nfiles            !< the number of history files when io_layout is used
+logical                 :: debug_onroot      !< a logical to enable debug message printing
+character(len=256)      :: restartdir        !< the restart directory for MOM6 restarts
+character(len=256)      :: outputdir         !< the output directory for MOM6 history output
+character(len=256)      :: errmsg            !< an error message
+character(len=*), parameter :: u_FILE_u =  __FILE__   !< an ESMF message tracker
 
 contains
 !> Initialize the configuration of the outputlog feature
 !!
 !! `outputlog_init` is called from [MOM_cap_mod::ModelSetRunClock][1].
 !!
-!! @param      gcomp        an ESMF_GridComp object
-!! @param      clock        an ESMF_Clock object
+!! @param[in]      gcomp    an ESMF_GridComp object
+!! @param[in]     mclock    an ESMF_Clock object
 !! @param[in]  ocean_grid   ocean grid
 !! @param[out] rc           return code
 !!
@@ -267,9 +266,9 @@ end subroutine outputlog_init
 !!
 !! ``outputlog_run`` is called during once during each [MOM_cap_mod::ModelAdvance][1]
 !!
-!! @param clock        an ESMF_Clock object
-!! @param atStopTime   when present, checks for final output file
-!! @param rc           return code
+!! @param      mclock       an ESMF_Clock object
+!! @param      atStopTime   when present, checks for final output file
+!! @param      rc           return code
 !!
 !! [1]: \mom6_nuopc_url/mom_cap.F90#L1746
 subroutine outputlog_run(mclock, atStopTime, rc)
@@ -336,7 +335,7 @@ end subroutine outputlog_run
 !! @param[in]     mtime             the model time state
 !! @param[inout]  cf_n              configuration for this frequency
 !! @param[inout]  state_n           tracked state for this frequency
-!! @param[in]     mpicomm           MPI communicator
+!! @param[in]     comm              MPI communicator
 !! @param[in]     isroot            logical flag for root PE
 !! @param[in]     rootpe            root rank in communicator
 !! @param[in]     outputdir         output directory path
@@ -382,7 +381,7 @@ subroutine track_freqn(mtime, cf_n, state_n, comm, isroot, rootpe, outputdir, la
       state_n%filename = trim(outputdir)//trim(cf_n%fnameprefix)//trim(timestr)//'.nc' &
            //trim(cf_n%fnamesuffix)
 
-      call get_filestate_atring(state_n, comm, isroot, rootpe, rc=rc)
+      call get_file_state_atring(state_n, comm, isroot, rootpe, rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
       if (debug_onroot) then
@@ -445,7 +444,7 @@ end subroutine track_freqn
 !! ``outputlog_restart`` is called whenever restart-writing is triggered in
 !! [MOM_cap_mod::ModelAdvance][1]
 !!
-!! @param[in]    clock            an ESMF_Clock object
+!! @param[in]    mclock           an ESMF_Clock object
 !! @param[in]    num_rest_files   the number of restart files
 !! @param[out]   rc               return code
 !!

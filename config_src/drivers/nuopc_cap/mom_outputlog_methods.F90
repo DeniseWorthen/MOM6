@@ -4,7 +4,6 @@
 
 !> This module contains a set of subroutines that are required by the UFS
 !> outputlog feature
-
 module mom_outputlog_methods
 
 use ESMF,                   only : ESMF_Alarm, ESMF_TimeInterval, ESMF_Clock
@@ -15,39 +14,41 @@ use netcdf
 
 implicit none; private
 
+!> Structure containing the configuration for output logging at a given frequency
 type :: outputlog_config_type
-  character(len=14)       :: alarm_name
-  integer                 :: opt_n
-  logical                 :: requested
-  character(len=7)        :: timereduce
-  character(len=13)       :: fnameprefix   ! 12 user chars max + appended '_'
-  character(len=4)        :: fnamesuffix
-  type(ESMF_Alarm)        :: alarm
-  type(ESMF_TimeInterval) :: filename_fhoffset
+  character(len=14)       :: alarm_name        !< alarm name
+  integer                 :: opt_n             !< output frequency (hours)
+  logical                 :: requested         !< if true, output logging at this freq is desired
+  character(len=7)        :: timereduce        !< snapshot or average time treatment of output, default='average'
+  character(len=13)       :: fnameprefix       !< user provided filename prefix, default='ocn'
+  character(len=4)        :: fnamesuffix       !< filename suffix if io_layout is in use, default = ''
+  type(ESMF_Alarm)        :: alarm             !< ESMF_Alarm associated with this freq
+  type(ESMF_TimeInterval) :: filename_fhoffset !< ESMF_TimeInterval offset between tracked file completion and name
 end type outputlog_config_type
 
+!> Structure containing the time-dependent state of a tracked file
 type :: outputlog_state_type
-  logical                       :: chkfile_nextAdvance
-  logical                       :: use_filesize
-  logical                       :: ringing
-  logical                       :: filecomplete
-  character(len=:), allocatable :: filename
-  integer                       :: createsize
-  integer                       :: completesize
-  type(ESMF_Time)               :: time_lastrestart
-  type(ESMF_Time)               :: time_logfile
-  type(ESMF_Time)               :: prevRing
+  logical                       :: chkfile_nextAdvance   !< logical flag to check file completion at next ModelAdvance
+  logical                       :: use_filesize          !< logical flag to use the file size to determine completion
+  logical                       :: ringing               !< logical flag for alarm ring
+  logical                       :: filecomplete          !< logical flag for file completion
+  character(len=:), allocatable :: filename              !< tracked file name
+  integer                       :: createsize            !< tracked file size at creation
+  integer                       :: completesize          !< tracked file size at completion
+  type(ESMF_Time)               :: time_lastrestart      !< time of last restart write when a tracked file completes
+  type(ESMF_Time)               :: time_logfile          !< time used to create the logfile for tracked file
+  type(ESMF_Time)               :: prevRing              !< the prevRing time associated with an Alarm
 end type outputlog_state_type
 
+!> Structure containing the model time state during tracking
 type :: outputlog_modeltime_type
-  type(ESMF_Time)         :: startTime
-  type(ESMF_Time)         :: currTime
-  type(ESMF_Time)         :: nextTime
-  type(ESMF_TimeInterval) :: tincrement
+  type(ESMF_Time)         :: startTime    !< the model startime
+  type(ESMF_Time)         :: currTime     !< the model current time at this ModelAdvance
+  type(ESMF_Time)         :: nextTime     !< the model time at the end of this ModelAdvance
+  type(ESMF_TimeInterval) :: tincrement   !< a convenient time increment of 1 minute
 end type outputlog_modeltime_type
 
-character(len=*), parameter :: u_FILE_u = &
-     __FILE__
+character(len=*), parameter :: u_FILE_u =  __FILE__   !< an ESMF message tracker
 
 public :: outputlog_config_type, outputlog_state_type, outputlog_modeltime_type
 public :: get_file_state, get_file_state_atring, file_is_complete, get_unlimited_len
