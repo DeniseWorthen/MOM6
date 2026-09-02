@@ -1,4 +1,4 @@
-!> This module contains a set of subroutines that check if MOM restart and history files
+!>  This module contains a set of subroutines that check if MOM restart and history files
 !! have been written and closed. This file is specific to UWM operational requirements
 !! and configurations (eg specific output frequencies in hours) and may break if used outside
 !! the scope of intended use.
@@ -40,7 +40,7 @@ use mpp_domains_mod       , only : mpp_get_io_domain_layout
 use NUOPC                 , only : NUOPC_CompAttributeGet
 use ESMF                  , only : ESMF_GridComp, ESMF_GridCompGet, ESMF_VM, ESMF_VMGet
 use ESMF                  , only : ESMF_Time, ESMF_Clock, ESMF_ClockGet, ESMF_Alarm, ESMF_AlarmSet
-use ESMF                  , only : ESMF_ClockGetAlarm, ESMF_AlarmRingerOff
+use ESMF                  , only : ESMF_ClockGetAlarm, ESMF_AlarmRingerOff, ESMF_AlarmIsRinging
 use ESMF                  , only : ESMF_ClockGetNextTime, ESMF_TimeGet, ESMF_TimeInterval
 use ESMF                  , only : ESMF_AlarmGet, ESMF_TimeIntervalSet, ESMF_TimeIntervalPrint
 use ESMF                  , only : ESMF_SUCCESS, ESMF_LogWrite, ESMF_LOGMSG_INFO, ESMF_FAILURE
@@ -52,19 +52,19 @@ use shr_is_restart_fh_mod , only : log_restart_fh
 use mom_outputlog_methods , only : get_file_state, file_is_complete, get_unlimited_len
 use mom_outputlog_methods , only : get_timestr, get_importexport
 use mom_outputlog_methods , only : readnml, debug_info
-use mom_outputlog_methods , only : outputlog_config_type, outputlog_state_type
-use mom_outputlog_methods , only : set_toffset, get_ring_state
+use mom_outputlog_methods , only : outputlog_config_type, outputlog_state_type, outputlog_modeltime_type
+use mom_outputlog_methods , only : set_toffset, get_file_state_atring
 use mpi_f08               , only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
 use netcdf
 
 implicit none; private
 
 public :: outputlog_init, outputlog_run, outputlog_restart
-public :: outputlog_freqn  ! exposed for unit testing (UFS-only feature; not used elsewhere in production)
+public :: track_freqn
 
-! the allowable output frequency for MOM6 history, in hours only
-integer, parameter :: n_freq  = 4
-integer, parameter, dimension(n_freq) :: freq = (/1, 3, 6, 24/)
+integer, parameter :: n_freq  = 4                               !< the number of allowable tracked frequencies
+integer, parameter, dimension(n_freq) :: freq = (/1, 3, 6, 24/) !< the allowed tracked frequency hours
+
 ! TODO: for multiple output freq in same run, a different known filename
 ! root for different freqs needs to be read in, consistent with the diag table
 
@@ -99,37 +99,40 @@ integer, parameter, dimension(n_freq) :: freq = (/1, 3, 6, 24/)
 ! log is overwritten
 !
 ! Depending on configuration, the output file can have an unlimited dimension >0 at creation time.
-! This necessitates checking for an additional criteria using the filesize at creation. An output file
-! is declared complete either when the unlimited dimension in the file is >0 or when the unlimited
+! This necessitates checking for an additional criteria using the filesize at creation. An output
+! file is declared complete either when the unlimited dimension in the file is >0 or when the unlimited
 ! dimension is >0 and the filesize is larger than the initial size.
 
-! When a file is determined to be complete, a log file is recorded containing the forecast hour, the valid
-! time, the name of the output file and the last completed restart file.
+! When a file is determined to be complete, a log file is recorded containing the forecast hour, the
+! valid time, the name of the output file and the last completed restart file.
 
-type(outputlog_config_type) :: cf(n_freq)
-type(outputlog_state_type)  :: state(n_freq)
+type(outputlog_config_type) :: cf(n_freq)    !< a structure containing the configuration, per frequency
+type(outputlog_state_type)  :: state(n_freq) !< a structure containing the time dependent file state, per frequency
+type(outputlog_modeltime_type) :: modeltime  !< a structure containing the current model time state
 
-type(ESMF_VM)           :: vm
-type(ESMF_TimeInterval) :: tincrement
-type(ESMF_Time)         :: lastrestart
-type(MPI_Comm)          :: mpicomm
+type(ESMF_VM)           :: vm                !< the component VM
+type(ESMF_Time)         :: lastrestart       !< an ESMF_Time of the last written restart
+type(MPI_Comm)          :: mpicomm           !< the model communicator
 
-integer                 :: toffset
-integer                 :: nfiles
-logical                 :: debug_onroot
-character(len=256)      :: restartdir
-character(len=256)      :: outputdir
-character(len=256)      :: errmsg
-character(len=*), parameter :: u_FILE_u = &
-     __FILE__
+integer                 :: toffset           !< the timeoffset in hours
+integer                 :: nfiles            !< the number of history files when io_layout is used
+logical                 :: debug_onroot      !< a logical to enable debug message printing
+character(len=256)      :: restartdir        !< the restart directory for MOM6 restarts
+character(len=256)      :: outputdir         !< the output directory for MOM6 history output
+character(len=256)      :: errmsg            !< an error message
+character(len=*), parameter :: u_FILE_u =  __FILE__   !< an ESMF message tracker
 
 contains
-!> Initialize a set of Alarms at the allowed output frequencies
+!> Initialize the configuration of the outputlog feature
 !!
-!! @param      gcomp        an ESMF_GridComp object
-!! @param      clock        an ESMF_Clock object
+!! `outputlog_init` is called from [MOM_cap_mod::ModelSetRunClock][1].
+!!
+!! @param[in]      gcomp    an ESMF_GridComp object
+!! @param[in]     mclock    an ESMF_Clock object
 !! @param[in]  ocean_grid   ocean grid
 !! @param[out] rc           return code
+!!
+!! [1]: \mom6_nuopc_url/mom_cap.F90#L2095
 subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
 
   type(ESMF_GridComp)  :: gcomp
@@ -167,7 +170,7 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
 
   call ESMF_ClockGet(mclock, currTime=mcurrTime, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
-  call ESMF_TimeIntervalSet(tincrement, m=1, rc=rc)
+  call ESMF_TimeIntervalSet(modeltime%tincrement, m=1, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
   call ESMF_TimeGet(mcurrTime, yy=year, mm=month, dd=day, h=hour, rc=rc)
@@ -187,19 +190,21 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
     else
       cf(n)%fnamesuffix     = '.000'
     endif
-    cf(n)%logname_fhoffset  = 0*tincrement
-    cf(n)%filename_fhoffset = 0*tincrement
+    cf(n)%filename_fhoffset = 0*modeltime%tincrement
 
+    state(n)%filename            = ' '
     state(n)%chkfile_nextAdvance = .false.
     state(n)%use_filesize        = .false.
-    state(n)%filename            = ''
+    state(n)%filecomplete        = .false.
     state(n)%createsize          = 0
+    state(n)%completesize        = 0
     state(n)%time_lastrestart    = lastrestart
+    state(n)%time_logfile        = mcurrTime
 
     ! the time offset in hours required to ensure the alarm rings at multiples of freq(n)
     ! regardless of start day/hour
     toffset = set_toffset(hour, freq(n))
-    alarmoffset = toffset*60*tincrement
+    alarmoffset = toffset*60*modeltime%tincrement
 
     call AlarmInit(mclock,                  &
          alarm     = cf(n)%alarm,           &
@@ -225,11 +230,9 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
 
   do n = 1,n_freq
     if (trim(cf(n)%timereduce) == 'none') then
-      cf(n)%logname_fhoffset  = 0*tincrement
-      cf(n)%filename_fhoffset = 60*freq(n)*tincrement
+      cf(n)%filename_fhoffset = 60*freq(n)*modeltime%tincrement
     else
-      cf(n)%logname_fhoffset  = 60*freq(n)*tincrement
-      cf(n)%filename_fhoffset = 90*freq(n)*tincrement
+      cf(n)%filename_fhoffset = 90*freq(n)*modeltime%tincrement
     endif
   enddo
 
@@ -241,7 +244,7 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
   ! do n = 1,n_freq
   !   if (trim(cf(n)%timereduce) == 'none') then
   !     cf(n)%requested = .false.
-  !     if (is_root_pe())print '(A)',trim(subname)//' output logging unavailable when Snapshots are requested '
+  !     if (is_root_pe())print '(A)',trim(subname)//' output logging unavailable when Snapshots are requested'
   !   endif
   ! enddo
 
@@ -259,11 +262,15 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
   endif
 
 end subroutine outputlog_init
-!> Write a log file denoting that an output file is complete
+!> Wrapper for logging output at single frequency
 !!
-!! @param clock        an ESMF_Clock object
-!! @param atStopTime   when present, checks for final output file
-!! @param rc           return code
+!! ``outputlog_run`` is called during once during each [MOM_cap_mod::ModelAdvance][1]
+!!
+!! @param      mclock       an ESMF_Clock object
+!! @param      atStopTime   when present, checks for final output file
+!! @param      rc           return code
+!!
+!! [1]: \mom6_nuopc_url/mom_cap.F90#L1746
 subroutine outputlog_run(mclock, atStopTime, rc)
   type(ESMF_Clock)              :: mclock
   logical, intent(in), optional :: atStopTime
@@ -272,6 +279,9 @@ subroutine outputlog_run(mclock, atStopTime, rc)
   ! local variables
   logical             :: lstop
   integer             :: n
+  character(len=16)   :: logfile
+  character(len=40)   :: importexport
+  character(len=16)   :: timestr
   character(len=256)  :: subname='MOM_cap:(outputlog_run)'
   !----------------------------------------------------------------------------
 
@@ -282,182 +292,163 @@ subroutine outputlog_run(mclock, atStopTime, rc)
     lstop = atStopTime
   endif
 
+  call ESMF_ClockGet(mclock, startTime=modeltime%startTime, currTime=modeltime%currTime, rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+  call ESMF_ClockGetNextTime(mclock, modeltime%nextTime, rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
   do n = 1,n_freq
-    call outputlog_freqn(mclock, cf(n), state(n), mpicomm, is_root_pe(), root_pe(), &
-         outputdir, tincrement, lastrestart, debug_onroot, atStopTime=lstop, rc=rc)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    if (cf(n)%requested) then
+
+      if (lstop) then
+        write(logfile,'(A,I2.2,A)') 'mom6.lstop.',cf(n)%opt_n,'h'
+      else
+        write(logfile,'(A,I2.2,A)') 'mom6.',cf(n)%opt_n,'h'
+      endif
+
+      call ESMF_ClockGetAlarm(mclock, alarmname=trim(cf(n)%alarm_name), alarm=cf(n)%alarm, rc=rc)
+      if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+      call ESMF_AlarmGet(cf(n)%alarm, prevRingTime=state(n)%prevring, rc=rc)
+      if (ChkErr(rc,__LINE__,u_FILE_u)) return
+      state(n)%ringing = ESMF_AlarmIsRinging(cf(n)%alarm, rc=rc)
+      if (state(n)%ringing) call ESMF_AlarmRingerOff(cf(n)%alarm, rc=rc)
+      if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+      call track_freqn(modeltime, cf(n), state(n), mpicomm, is_root_pe(), root_pe(), outputdir, &
+           lastrestart, debug_onroot, lstop, rc=rc)
+      if (ChkErr(rc,__LINE__,u_FILE_u)) return
+      ! if complete, write a logfile
+      if (is_root_pe()) then
+        if (state(n)%filecomplete) then
+          call log_restart_fh(state(n)%time_logfile, modeltime%startTime, complog=trim(logfile), &
+               prefixtime=.true., lastrestart=state(n)%time_lastrestart, lastoutput=state(n)%filename, rc=rc)
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+        endif
+      endif
+
+    endif
   enddo
 end subroutine outputlog_run
-!> Check file state at single output-frequency alarm
+!> Track and log file state at single output-frequency alarm
 !!
-!! @param[in]     mclock                 the ESMF_Clock for the model
-!! @param[inout]  cf_n                   output configuration for this frequency
-!! @param[inout]  state_n                tracked state for this frequency
-!! @param[in]     mpicomm                MPI communicator
-!! @param[in]     isroot                 logical flag for root PE
-!! @param[in]     rootpe                 root rank in communicator
-!! @param[in]     outputdir              output directory path
-!! @param[in]     tincrement             one minute interval
-!! @param[in]     lastrestart            last restart write
-!! @param[in]     debug_onroot           logical flag to enable debug printing
-!! @param[in]     atStopTime             logical flag for checking files at finalize
-!! @param[out]    filecomplete_out          determined file state, used in unit test context
-!! @param[out]    filecomplete_lstop_out    determined file state at StopTime, used in unit test context
-!! @param[out]    rc                     return code
-subroutine outputlog_freqn(mclock, cf_n, state_n, mpicomm, isroot, rootpe, outputdir, tincrement, &
-     lastrestart, debug_onroot, atStopTime, rc, filecomplete_out, filecomplete_lstop_out)
+!! @param[in]     mtime             the model time state
+!! @param[inout]  cf_n              configuration for this frequency
+!! @param[inout]  state_n           tracked state for this frequency
+!! @param[in]     comm              MPI communicator
+!! @param[in]     isroot            logical flag for root PE
+!! @param[in]     rootpe            root rank in communicator
+!! @param[in]     outputdir         output directory path
+!! @param[in]     lastrestart       last restart write time
+!! @param[in]     debug_onroot      logical flag to enable debug printing
+!! @param[in]     lstop             logical flag for checking files at finalize
+!! @param[out]    rc                return code
+subroutine track_freqn(mtime, cf_n, state_n, comm, isroot, rootpe, outputdir, lastrestart, &
+     debug_onroot, lstop, rc)
 
-  type(ESMF_Clock),             intent(in)    :: mclock
-  type(outputlog_config_type),  intent(inout) :: cf_n
-  type(outputlog_state_type),   intent(inout) :: state_n
-  type(MPI_Comm),               intent(in)    :: mpicomm
-  logical,                      intent(in)    :: isroot
-  integer,                      intent(in)    :: rootpe
-  character(len=*),             intent(in)    :: outputdir
-  type(ESMF_TimeInterval),      intent(in)    :: tincrement
-  type(ESMF_Time),              intent(in)    :: lastrestart
-  logical,                      intent(in)    :: debug_onroot
-  logical, optional,            intent(in)    :: atStopTime
-  integer,                      intent(out)   :: rc
-  logical, optional,            intent(out)   :: filecomplete_out
-  logical, optional,            intent(out)   :: filecomplete_lstop_out
+  type(outputlog_modeltime_type), intent(in)    :: mtime
+  type(outputlog_config_type),    intent(inout) :: cf_n
+  type(outputlog_state_type),     intent(inout) :: state_n
+  type(MPI_Comm),                 intent(in)    :: comm
+  logical,                        intent(in)    :: isroot
+  integer,                        intent(in)    :: rootpe
+  character(len=*),               intent(in)    :: outputdir
+  type(ESMF_Time),                intent(in)    :: lastrestart
+  logical,                        intent(in)    :: debug_onroot
+  logical,                        intent(in)    :: lstop
+  integer,                        intent(out)   :: rc
 
   ! local variables
-  type(ESMF_Time)     :: nextTime, currTime, startTime, prevring
-  logical             :: lstop
-  logical             :: filecomplete
-  integer             :: nlen, fsize
-  character(len=3)    :: chour
-  character(len=40)   :: importexport
-  character(len=16)   :: timestr
-  character(len=256)  :: subname='MOM_cap:(outputlog_freqn)'
+  integer            :: nlen, fsize
+  character(len=40)  :: importexport
+  character(len=16)  :: timestr
+
+  character(len=256) :: subname='MOM_cap:(track_freqn)'
   !----------------------------------------------------------------------------
 
   rc = ESMF_SUCCESS
-  if (present(filecomplete_out))       filecomplete_out       = .false.
-  if (present(filecomplete_lstop_out)) filecomplete_lstop_out = .false.
 
-  call ESMF_ClockGet(mclock, startTime=startTime, currTime=currTime, rc=rc)
-  if (ChkErr(rc,__LINE__,u_FILE_u)) return
-  call ESMF_ClockGetNextTime(mclock, nextTime, rc=rc)
-  if (ChkErr(rc,__LINE__,u_FILE_u)) return
-  importexport = get_importexport(currTime, nextTime, rc=rc)
+  importexport = get_importexport(mtime%currTime, mtime%nextTime, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-  lstop = .false.
-  if (present(atStopTime)) lstop = atStopTime
-
-  fsize = nf90_fill_int
-  nlen  = nf90_fill_int
-
-  write(chour,'(I2.2,A)') cf_n%opt_n,'h'
-  filecomplete = .false.
-
-  if (cf_n%requested) then
-    call ESMF_ClockGetAlarm(mclock, alarmname=trim(cf_n%alarm_name), alarm=cf_n%alarm, rc=rc)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    call get_ring_state(mclock, cf_n%alarm, state_n%ringing, state_n%nextTime, rc=rc)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-    ! when the alarm rings, set file check on next advance and construct the filename
+  if (.not. lstop) then
+    ! when the alarm is ringing, set file check on next advance and construct the filename
     if (state_n%ringing) then
-      call ESMF_AlarmRingerOff(cf_n%alarm, rc=rc )
-      if (ChkErr(rc,__LINE__,u_FILE_u)) return
       state_n%chkfile_nextAdvance = .true.
 
-      timestr = get_timestr(state_n%nextTime-cf_n%filename_fhoffset, rc=rc)
+      timestr = get_timestr(mtime%nextTime-cf_n%filename_fhoffset, rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
       state_n%filename = trim(outputdir)//trim(cf_n%fnameprefix)//trim(timestr)//'.nc' &
            //trim(cf_n%fnamesuffix)
 
-      call get_file_state(mpicomm, isroot, rootpe, state_n%filename, nlen=nlen, &
-           fsize=fsize, rc=rc)
-      rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
+      call get_file_state_atring(state_n, comm, isroot, rootpe, rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-      state_n%createsize = fsize
-      if (nlen == 0) then
-        state_n%use_filesize = .false.
-      else
-        state_n%use_filesize = .true.
-      endif
-
       if (debug_onroot) then
-        print '(A,2(A,L),A,2i16)',trim(subname)//' fname '//trim(state_n%filename)//'  '      &
-             //trim(importexport),' checkflag ',state_n%chkfile_nextAdvance,' use_filesize ', &
-             state_n%use_filesize, '  ',state_n%createsize,nlen
+        print '(A,2(A,L),A,i16)',trim(subname)//' fname '//state_n%filename//'  '//importexport, &
+             ' checkflag ',state_n%chkfile_nextAdvance,' use_filesize ',state_n%use_filesize,    &
+             '  ',state_n%createsize
       endif
     endif ! state_n%ringing
 
+    ! assumes at least one regular completion has occurred for this frequency before lstop is ever checked
     if (state_n%chkfile_nextAdvance) then
-      filecomplete = file_is_complete(mpicomm, isroot, rootpe, state_n%filename, &
-           state_n%use_filesize, state_n%createsize, rc)
+      state_n%filecomplete = file_is_complete(comm, isroot, rootpe, state_n%filename, state_n%use_filesize, &
+           state_n%createsize, rc)
       rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-      if (present(filecomplete_out)) filecomplete_out = filecomplete
 
-      if (filecomplete) then
+      if (state_n%filecomplete) then
+        call get_file_state(comm, isroot, rootpe, state_n%filename, fsize=state_n%completesize, rc=rc)
+        rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
+        if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
         state_n%chkfile_nextAdvance = .false.
         state_n%time_lastrestart = lastrestart
-        if (isroot) then
-          call log_restart_fh(currTime-cf_n%logname_fhoffset, startTime, 'mom6.'//chour, &
-               prefixtime=.true., lastrestart=state_n%time_lastrestart,                  &
-               lastoutput=state_n%filename, rc=rc)
-          if (ChkErr(rc,__LINE__,u_FILE_u)) return
-        endif
+        state_n%time_logfile = mtime%currTime
       endif
     endif
-    if (debug_onroot) call debug_info(trim(subname)//'  ',trim(state_n%filename), &
+    if (debug_onroot) call debug_info(trim(subname)//'  ',state_n%filename, state_n%chkfile_nextAdvance, &
+         state_n%createsize, importexport)
+  else
+    ! at lstop, use prevRing in place of currTime to allow for stopping between averaging intervals
+    ! prevRing == currTime if stopping on intervals
+    if (trim(cf_n%timereduce) == 'none') then
+     timestr = get_timestr(state_n%prevring, rc=rc)
+     if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    else
+     timestr = get_timestr(state_n%prevring-30*cf_n%opt_n*mtime%tincrement, rc=rc)
+     if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    endif
+    state_n%filename = trim(outputdir)//trim(cf_n%fnameprefix)//trim(timestr)//'.nc' &
+         //trim(cf_n%fnamesuffix)
+
+    call get_file_state(comm, isroot, rootpe, state_n%filename, nlen=nlen, fsize=fsize, rc=rc)
+    rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    ! file lands complete; verify size against tracked completesize
+    state_n%filecomplete = (nlen > 0 .and. fsize == state_n%completesize)
+
+    if (state_n%filecomplete) then
+      state_n%chkfile_nextAdvance = .false.
+      state_n%time_lastrestart = lastrestart
+      state_n%time_logfile = state_n%prevring
+    endif
+    if (debug_onroot) call debug_info(trim(subname)//' lstop ',state_n%filename, &
          state_n%chkfile_nextAdvance, state_n%createsize, importexport)
+  endif ! lstop
 
-    if (lstop) then
-      ! use prevRing in place of currTime to allow for stopping between averaging intervals
-      ! prevring == currTime if stopping on intervals
-      call ESMF_AlarmGet(cf_n%alarm, prevRingTime=prevring, rc=rc)
-      if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-      if (trim(cf_n%timereduce) == 'none') then
-        timestr = get_timestr(prevring, rc=rc)
-        if (ChkErr(rc,__LINE__,u_FILE_u)) return
-      else
-        timestr = get_timestr(prevring-30*cf_n%opt_n*tincrement, rc=rc)
-        if (ChkErr(rc,__LINE__,u_FILE_u)) return
-      endif
-
-      state_n%filename = trim(outputdir)//trim(cf_n%fnameprefix)//trim(timestr)//'.nc' &
-           //trim(cf_n%fnamesuffix)
-
-      call get_file_state(mpicomm, isroot, rootpe, state_n%filename, nlen=nlen, &
-           fsize=fsize, rc=rc)
-      rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
-      if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-      filecomplete = file_is_complete(mpicomm, isroot, rootpe, state_n%filename, &
-           state_n%use_filesize, state_n%createsize, rc)
-      rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
-      if (ChkErr(rc,__LINE__,u_FILE_u)) return
-      if (present(filecomplete_lstop_out)) filecomplete_lstop_out = filecomplete
-
-      if (filecomplete) then
-        state_n%chkfile_nextAdvance = .false.
-        state_n%time_lastrestart = lastrestart
-        if (isroot) then
-          call log_restart_fh(prevring, startTime, 'mom6.lstop.'//chour, prefixtime=.true., &
-               lastrestart=state_n%time_lastrestart, lastoutput=state_n%filename, rc=rc)
-          if (ChkErr(rc,__LINE__,u_FILE_u)) return
-        endif
-      endif
-      if (debug_onroot) call debug_info(trim(subname)//' lstop ',trim(state_n%filename), &
-           state_n%chkfile_nextAdvance, state_n%createsize, importexport)
-    endif ! lstop
-  endif ! output requested
-end subroutine outputlog_freqn
-
+end subroutine track_freqn
 !> Check all restart files to determine if output has been completed
 !!
-!! @param[in]    clock            an ESMF_Clock object
+!! ``outputlog_restart`` is called whenever restart-writing is triggered in
+!! [MOM_cap_mod::ModelAdvance][1]
+!!
+!! @param[in]    mclock           an ESMF_Clock object
 !! @param[in]    num_rest_files   the number of restart files
 !! @param[out]   rc               return code
+!!
+!! [1]: \mom6_nuopc_url/mom_cap.F90#L1746)
 subroutine outputlog_restart(mclock, num_rest_files, rc)
   type(ESMF_Clock)     :: mclock
   integer, intent(in)  :: num_rest_files

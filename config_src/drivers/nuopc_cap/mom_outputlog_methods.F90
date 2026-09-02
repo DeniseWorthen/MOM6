@@ -4,52 +4,59 @@
 
 !> This module contains a set of subroutines that are required by the UFS
 !> outputlog feature
-
 module mom_outputlog_methods
 
-use ESMF,              only : ESMF_Alarm, ESMF_TimeInterval, ESMF_Clock
-use ESMF,              only : ESMF_SUCCESS, ESMF_Failure, ESMF_Time, ESMF_TimeGet
-use ESMF,              only : ESMF_AlarmIsRinging, ESMF_ClockGetNextTime
-use MOM_cap_methods,   only : ChkErr
-use mpi_f08,           only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
+use ESMF,                   only : ESMF_Alarm, ESMF_TimeInterval, ESMF_Clock
+use ESMF,                   only : ESMF_SUCCESS, ESMF_Failure, ESMF_Time, ESMF_TimeGet
+use MOM_cap_methods,        only : ChkErr
+use mpi_f08,                only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
 use netcdf
 
 implicit none; private
 
+!> Structure containing the configuration for output logging at a given frequency
 type :: outputlog_config_type
-  character(len=14)       :: alarm_name
-  integer                 :: opt_n
-  logical                 :: requested
-  character(len=7)        :: timereduce
-  character(len=13)       :: fnameprefix   ! 12 user chars max + appended '_' -- see setprefix
-  character(len=4)        :: fnamesuffix
-  type(ESMF_Alarm)        :: alarm
-  type(ESMF_TimeInterval) :: logname_fhoffset
-  type(ESMF_TimeInterval) :: filename_fhoffset
+  character(len=14)       :: alarm_name        !< alarm name
+  integer                 :: opt_n             !< output frequency (hours)
+  logical                 :: requested         !< if true, output logging at this freq is desired
+  character(len=7)        :: timereduce        !< snapshot or average time treatment of output, default='average'
+  character(len=13)       :: fnameprefix       !< user provided filename prefix, default='ocn'
+  character(len=4)        :: fnamesuffix       !< filename suffix if io_layout is in use, default = ''
+  type(ESMF_Alarm)        :: alarm             !< ESMF_Alarm associated with this freq
+  type(ESMF_TimeInterval) :: filename_fhoffset !< ESMF_TimeInterval offset between tracked file completion and name
 end type outputlog_config_type
 
+!> Structure containing the time-dependent state of a tracked file
 type :: outputlog_state_type
-  logical                 :: chkfile_nextAdvance
-  logical                 :: use_filesize
-  character(len=256)      :: filename
-  integer                 :: createsize
-  type(ESMF_Time)         :: time_lastrestart
-  logical                 :: ringing
-  type(ESMF_Time)         :: nextTime
+  logical                       :: chkfile_nextAdvance   !< logical flag to check file completion at next ModelAdvance
+  logical                       :: use_filesize          !< logical flag to use the file size to determine completion
+  logical                       :: ringing               !< logical flag for alarm ring
+  logical                       :: filecomplete          !< logical flag for file completion
+  character(len=:), allocatable :: filename              !< tracked file name
+  integer                       :: createsize            !< tracked file size at creation
+  integer                       :: completesize          !< tracked file size at completion
+  type(ESMF_Time)               :: time_lastrestart      !< time of last restart write when a tracked file completes
+  type(ESMF_Time)               :: time_logfile          !< time used to create the logfile for tracked file
+  type(ESMF_Time)               :: prevRing              !< the prevRing time associated with an Alarm
 end type outputlog_state_type
 
-character(len=*), parameter :: u_FILE_u = &
-     __FILE__
+!> Structure containing the model time state during tracking
+type :: outputlog_modeltime_type
+  type(ESMF_Time)         :: startTime    !< the model startime
+  type(ESMF_Time)         :: currTime     !< the model current time at this ModelAdvance
+  type(ESMF_Time)         :: nextTime     !< the model time at the end of this ModelAdvance
+  type(ESMF_TimeInterval) :: tincrement   !< a convenient time increment of 1 minute
+end type outputlog_modeltime_type
 
-public :: get_file_state, file_is_complete, get_unlimited_len
+character(len=*), parameter :: u_FILE_u =  __FILE__   !< an ESMF message tracker
+
+public :: outputlog_config_type, outputlog_state_type, outputlog_modeltime_type
+public :: get_file_state, get_file_state_atring, file_is_complete, get_unlimited_len
 public :: get_timestr, get_importexport
 public :: readnml, debug_info, nf90_err
-public :: outputlog_config_type, outputlog_state_type
-
-public :: setrequest, settype, setprefix, set_toffset, get_ring_state
+public :: setrequest, settype, setprefix, set_toffset
 
 contains
-
 !> Read nml options to configure output logging
 !!
 !! @param[in]     fname    input namelist file
@@ -113,6 +120,38 @@ subroutine readnml(fname, cf, debug, errmsg, rc)
   if (ierr /= 0) return
 
 end subroutine readnml
+!> Get the state of the netcdf output file at ring time
+!!
+!! @param[inout]  state_n    this frequency's state -- mutated here
+!! @param[in]     comm       MPI communicator
+!! @param[in]     isroot     .true. on the root PE
+!! @param[in]     rootpe     the root PE's rank
+!! @param[out]    rc         return code
+subroutine get_file_state_atring(state_n, comm, isroot, rootpe, rc)
+
+  type(outputlog_state_type), intent(inout) :: state_n
+  type(MPI_Comm),             intent(in)    :: comm
+  logical,                    intent(in)    :: isroot
+  integer,                    intent(in)    :: rootpe
+  integer,                    intent(out)   :: rc
+
+  integer :: nlen, fsize
+
+  rc = ESMF_SUCCESS
+
+  call get_file_state(comm, isroot, rootpe, state_n%filename, nlen=nlen, fsize=fsize, rc=rc)
+  rc = merge(ESMF_SUCCESS, ESMF_Failure, rc == 0)
+  if (rc /= ESMF_SUCCESS) return
+
+  state_n%filecomplete = .false.
+  state_n%createsize = fsize
+  if (nlen == 0) then
+     state_n%use_filesize = .false.
+  else
+     state_n%use_filesize = .true.
+  endif
+
+end subroutine get_file_state_atring
 !> Retrieve the unlimited dimension length and file size, broadcasting to all PEs
 !!
 !! @param[in]   comm      the MPI communicator
@@ -199,7 +238,6 @@ logical function file_is_complete(comm, isroot, rootpe, fname, chk4size, creates
   rc = ierr
 
 end function file_is_complete
-
 !> Validate requested output frequencies from namelist entries
 !!
 !! @param[in]   validfreqs     supported output frequencies (hours)
@@ -473,25 +511,6 @@ function set_toffset(hour, freq) result(toffset)
     toffset = 0
   endif
 end function set_toffset
-!> Obtain the model clock's nextTime and Alarm ring status
-!!
-!! @param[in]  mclock     the model clock
-!! @param[in]  alarm      the alarm to check
-!! @param[out] ringing    logical, .true. if the alarm is currently ringing
-!! @param[out] nextTime   the clock's next time (currTime + timeStep)
-!! @param[out] rc         return code
-subroutine get_ring_state(mclock, alarm, ringing, nextTime, rc)
-  type(ESMF_Clock), intent(in)  :: mclock
-  type(ESMF_Alarm), intent(in)  :: alarm
-  logical,          intent(out) :: ringing
-  type(ESMF_Time),  intent(out) :: nextTime
-  integer,          intent(out) :: rc
-
-  ringing = ESMF_AlarmIsRinging(alarm, rc=rc)
-  if (rc /= ESMF_SUCCESS) return
-
-  call ESMF_ClockGetNextTime(mclock, nextTime, rc=rc)
-end subroutine get_ring_state
 !> Return the length of the unlimited dimension
 !!
 !! @param[in]  fname   the file name
@@ -550,7 +569,6 @@ function get_importexport(currTime, nextTime, rc) result(importexport)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
   importexport = trim(import_timestr)//'  '//trim(export_timestr)
 end function get_importexport
-
 !> Write debug info to stdout, only called on root pe
 !!
 !! @param[in]    tag            an information tag
@@ -587,7 +605,6 @@ subroutine debug_info(tag,fname,chkflag,filesize,timestring)
     print '(A)',trim(msgString)
   endif
 end subroutine debug_info
-
 !> Handle netcdf errors
 !!
 !! @param[in]  ierr        the error code
