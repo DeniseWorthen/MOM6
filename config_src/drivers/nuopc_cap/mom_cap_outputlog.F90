@@ -264,7 +264,7 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
 end subroutine outputlog_init
 !> Wrapper for logging output at single frequency
 !!
-!! ``outputlog_run`` is called during once during each [MOM_cap_mod::ModelAdvance][1]
+!! `outputlog_run` is called during once during each [MOM_cap_mod::ModelAdvance][1]
 !!
 !! @param      mclock       an ESMF_Clock object
 !! @param      atStopTime   when present, checks for final output file
@@ -441,7 +441,7 @@ subroutine track_freqn(mtime, cf_n, state_n, comm, isroot, rootpe, outputdir, la
 end subroutine track_freqn
 !> Check all restart files to determine if output has been completed
 !!
-!! ``outputlog_restart`` is called whenever restart-writing is triggered in
+!! `outputlog_restart` is called whenever restart-writing is triggered in
 !! [MOM_cap_mod::ModelAdvance][1]
 !!
 !! @param[in]    mclock           an ESMF_Clock object
