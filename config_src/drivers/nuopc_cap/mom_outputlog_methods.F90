@@ -1,9 +1,10 @@
 ! This file is part of MOM6, the Modular Ocean Model version 6.
 ! See the LICENSE file for licensing information.
 ! SPDX-License-Identifier: Apache-2.0
-
-!> This module contains a set of subroutines that are required by the UFS
-!> outputlog feature
+!> @file mom_outputlog_methods.F90
+!> @brief Contains methods for the outputlog feature
+!!
+!> This module contains a set of methods that are required by the UFS outputlog feature
 module mom_outputlog_methods
 
 use ESMF,                   only : ESMF_Alarm, ESMF_TimeInterval, ESMF_Clock

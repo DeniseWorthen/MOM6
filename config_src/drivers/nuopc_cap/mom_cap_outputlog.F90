@@ -1,7 +1,15 @@
-!>  This module contains a set of subroutines that check if MOM restart and history files
+! This file is part of MOM6, the Modular Ocean Model version 6.
+! See the LICENSE file for licensing information.
+! SPDX-License-Identifier: Apache-2.0
+!!
+!> @file mom_cap_outputlog.F90
+!> @brief The outputlog feature for UFS
+!!
+!!  This module contains a set of subroutines that check if MOM restart and history files
 !! have been written and closed. This file is specific to UWM operational requirements
 !! and configurations (eg specific output frequencies in hours) and may break if used outside
 !! the scope of intended use.
+!!
 !! This module is a stub when CESMCOUPLED is defined
 module MOM_cap_outputlog
 
@@ -64,47 +72,6 @@ public :: track_freqn
 
 integer, parameter :: n_freq  = 4                               !< the number of allowable tracked frequencies
 integer, parameter, dimension(n_freq) :: freq = (/1, 3, 6, 24/) !< the allowed tracked frequency hours
-
-! TODO: for multiple output freq in same run, a different known filename
-! root for different freqs needs to be read in, consistent with the diag table
-
-! the tincrement interval (defined in minutes) is used to construct the output filename
-! the file name must be set as the mid-point of the averaging period via the diagtable
-! and the output filename timestrings are given by
-!      T - (interval * 60 * increment + interval/2 * 60 * increment )
-! where T is the time when the file is closed
-!
-!   00   .   03   .   06   .   09
-!       1:30 = 6 - (3 + 1:30)
-!                4:30 = 9 - (3 + 1:30)
-!
-!   00   .   06   .   12   .   18
-!       03 = 12 - (6 + 3)
-!                 09 = 18 - (6 + 3)
-!
-!   00   .   24   .   48   .   72
-!       12 = 48 - (24 + 12)
-!                 36 = 72 - (24 + 12)
-!
-! when the model reaches the stop time, any 'pending' output file is closed, and the final
-! interval output is also closed
-!
-!                   stop
-!  18   .   24   .   30
-!      21 = 30 - (12 + 3)
-!                03 = 30 - (3)
-!
-! since both the final interval and the next-to-final interval can be closed at the stop time,
-! a different log file name is required for the final log file, otherwise the next-to-final
-! log is overwritten
-!
-! Depending on configuration, the output file can have an unlimited dimension >0 at creation time.
-! This necessitates checking for an additional criteria using the filesize at creation. An output
-! file is declared complete either when the unlimited dimension in the file is >0 or when the unlimited
-! dimension is >0 and the filesize is larger than the initial size.
-
-! When a file is determined to be complete, a log file is recorded containing the forecast hour, the
-! valid time, the name of the output file and the last completed restart file.
 
 type(outputlog_config_type) :: cf(n_freq)    !< a structure containing the configuration, per frequency
 type(outputlog_state_type)  :: state(n_freq) !< a structure containing the time dependent file state, per frequency
