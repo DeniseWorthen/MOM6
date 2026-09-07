@@ -5,7 +5,7 @@
 !> @file mom_cap_outputlog.F90
 !> @brief The outputlog feature for UFS
 !!
-!!  This module contains a set of subroutines that check if MOM restart and history files
+!! This module contains a set of subroutines that check if MOM restart and history files
 !! have been written and closed. This file is specific to UWM operational requirements
 !! and configurations (eg specific output frequencies in hours) and may break if used outside
 !! the scope of intended use.
@@ -129,8 +129,6 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
   call get_MOM_input(dirs=dirs)
   restartdir = trim(dirs%restart_output_dir)
   outputdir = trim(dirs%output_directory)
-  !print *,'XXX restart dirs = '//trim(restartdir)
-  !print *,'XXX output dirs = '//trim(outputdir)
 
   io_layout = mpp_get_io_domain_layout(ocean_grid%Domain%mpp_domain)
   nfiles = io_layout(1) * io_layout(2)
@@ -358,7 +356,6 @@ subroutine track_freqn(mtime, cf_n, state_n, comm, isroot, rootpe, outputdir, la
       endif
     endif ! state_n%ringing
 
-    ! assumes at least one regular completion has occurred for this frequency before lstop is ever checked
     if (state_n%chkfile_nextAdvance) then
       state_n%filecomplete = file_is_complete(comm, isroot, rootpe, state_n%filename, state_n%use_filesize, &
            state_n%createsize, rc)
@@ -394,6 +391,7 @@ subroutine track_freqn(mtime, cf_n, state_n, comm, isroot, rootpe, outputdir, la
     rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
     ! file lands complete; verify size against tracked completesize
+    ! assumes at least one regular completion has occurred for this frequency before lstop is ever checked
     state_n%filecomplete = (nlen > 0 .and. fsize == state_n%completesize)
 
     if (state_n%filecomplete) then
