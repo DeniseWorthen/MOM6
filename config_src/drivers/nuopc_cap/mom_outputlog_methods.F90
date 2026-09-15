@@ -23,7 +23,7 @@ type :: outputlog_config_type
   logical                 :: requested         !< if true, output logging at this freq is desired
   character(len=7)        :: timereduce        !< snapshot or average time treatment of output, default='average'
   character(len=13)       :: fnameprefix       !< user provided filename prefix, default='ocn'
-  character(len=4)        :: fnamesuffix       !< filename suffix if io_layout is in use, default = ''
+  character(len=5)        :: fnamesuffix       !< filename suffix if io_layout is in use, default = ''
   type(ESMF_Alarm)        :: alarm             !< ESMF_Alarm associated with this freq
   type(ESMF_TimeInterval) :: filename_fhoffset !< ESMF_TimeInterval offset between tracked file completion and name
 end type outputlog_config_type

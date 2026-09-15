@@ -153,7 +153,7 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
     if (nfiles == 1) then
       cf(n)%fnamesuffix     = ''
     else
-      cf(n)%fnamesuffix     = '.000'
+      cf(n)%fnamesuffix     = '.0000'
     endif
     cf(n)%filename_fhoffset = 0*modeltime%tincrement
 
@@ -202,10 +202,10 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
   enddo
 
   ! Snapshots and IO_Layout not yet implemented
-  if (nfiles > 1) then
-    cf(:)%requested = .false.
-    if (is_root_pe())print '(A)',trim(subname)//' output logging unavailable when IO_LAYOUT is used '
-  endif
+  !if (nfiles > 1) then
+  !  cf(:)%requested = .false.
+  !  if (is_root_pe())print '(A)',trim(subname)//' output logging unavailable when IO_LAYOUT is used '
+  !endif
   ! do n = 1,n_freq
   !   if (trim(cf(n)%timereduce) == 'none') then
   !     cf(n)%requested = .false.
@@ -420,15 +420,15 @@ subroutine outputlog_restart(mclock, num_rest_files, rc)
   integer, intent(out) :: rc
 
   ! local variables
-  type(ESMF_Time)      :: startTime, currTime, nextTime
-  integer              :: n, nlen
-  integer              :: year, month, day, hour, minute, seconds
-  character(len=256)   :: fname
-  character(len=15)    :: timestr
-  character(len=40)    :: importexport
-  logical, allocatable :: allDone(:)
-  character(len=8)     :: suffix
-  character(len=256)   :: subname='MOM_cap:(outputlog_restart)'
+  type(ESMF_Time)                 :: startTime, currTime, nextTime
+  integer                         :: n, nlen
+  integer                         :: year, month, day, hour, minute, seconds
+  character(len=256), allocatable :: fnames(:)
+  character(len=15)               :: timestr
+  character(len=40)               :: importexport
+  logical, allocatable            :: allDone(:)
+  character(len=8)                :: suffix
+  character(len=256)              :: subname='MOM_cap:(outputlog_restart)'
   !----------------------------------------------------------------------------
 
   rc = ESMF_SUCCESS
@@ -445,7 +445,9 @@ subroutine outputlog_restart(mclock, num_rest_files, rc)
   write(timestr,'(I4.4,2(I2.2),A,3(I2.2))') year, month, day,".", hour, minute, seconds
 
   allocate(allDone(1:num_rest_files))
+  allocate(fnames(1:num_rest_files))
   allDone = .false.
+  fnames = ''
 
   do n = 1,num_rest_files
     if (n == 1) then
@@ -456,25 +458,24 @@ subroutine outputlog_restart(mclock, num_rest_files, rc)
       write(suffix,'("_",I2)') n-1
     endif
     if (len_trim(suffix) == 0) then
-      fname = trim(restartdir)//trim(timestr)//'.MOM.res.nc'
+      fnames(n) = trim(restartdir)//trim(timestr)//'.MOM.res.nc'
     else
-      fname = trim(restartdir)//trim(timestr)//'.MOM.res'//trim(suffix)//'.nc'
+      fnames(n) = trim(restartdir)//trim(timestr)//'.MOM.res'//trim(suffix)//'.nc'
     endif
+  enddo
 
-    ! check if file is written
-    call get_file_state(mpicomm, is_root_pe(), root_pe(), fname, nlen=nlen, rc=rc)
+  do n = 1,num_rest_files
+    allDone(n) = file_is_complete(mpicomm, is_root_pe(), root_pe(), fnames(n), .false., 0, rc)
     rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-    if (nlen > 0) allDone(n) = .true.
     if (debug_onroot) then
-      if (nlen > 0) then
-        print '(A)',trim(subname)//' restart '//trim(fname)//'  '//trim(importexport)//' complete'
+      if (allDone(n)) then
+        print '(A)',trim(subname)//' restart '//trim(fnames(n))//'  '//trim(importexport)//' complete'
       else
-        print '(A)',trim(subname)//' restart '//trim(fname)//'  '//trim(importexport)//' still 0'
+        print '(A)',trim(subname)//' restart '//trim(fnames(n))//'  '//trim(importexport)//' still 0'
       endif
     endif
-  enddo ! num_rest_files
+  enddo
 
   if (all(allDone) .eqv. .true.) then
     lastrestart = nextTime
