@@ -61,7 +61,7 @@ use mom_outputlog_methods , only : get_file_state, file_is_complete, get_unlimit
 use mom_outputlog_methods , only : get_timestr, get_importexport
 use mom_outputlog_methods , only : readnml, debug_info
 use mom_outputlog_methods , only : outputlog_config_type, outputlog_state_type, outputlog_modeltime_type
-use mom_outputlog_methods , only : set_toffset, get_file_state_atring
+use mom_outputlog_methods , only : set_toffset, get_file_state_atring, track_restn
 use mpi_f08               , only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
 use netcdf
 
@@ -421,13 +421,10 @@ subroutine outputlog_restart(mclock, num_rest_files, rc)
 
   ! local variables
   type(ESMF_Time)                 :: startTime, currTime, nextTime
-  integer                         :: n, nlen
-  integer                         :: year, month, day, hour, minute, seconds
-  character(len=256), allocatable :: fnames(:)
-  character(len=15)               :: timestr
+  integer                         :: n
   character(len=40)               :: importexport
-  logical, allocatable            :: allDone(:)
-  character(len=8)                :: suffix
+  logical,            allocatable :: allDone(:)
+  character(len=256), allocatable :: fnames(:)
   character(len=256)              :: subname='MOM_cap:(outputlog_restart)'
   !----------------------------------------------------------------------------
 
@@ -440,42 +437,18 @@ subroutine outputlog_restart(mclock, num_rest_files, rc)
   importexport = get_importexport(currTime, nextTime, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-  call ESMF_TimeGet(nextTime, yy=year, mm=month, dd=day, h=hour, m=minute, s=seconds, rc=rc )
+  call track_restn(nextTime, num_rest_files, mpicomm, is_root_pe(), root_pe(), restartdir, allDone, fnames, rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
-  write(timestr,'(I4.4,2(I2.2),A,3(I2.2))') year, month, day,".", hour, minute, seconds
 
-  allocate(allDone(1:num_rest_files))
-  allocate(fnames(1:num_rest_files))
-  allDone = .false.
-  fnames = ''
-
-  do n = 1,num_rest_files
-    if (n == 1) then
-      suffix = ''
-    else if (n-1 < 10) then
-      write(suffix,'("_",I1)') n-1
-    else
-      write(suffix,'("_",I2)') n-1
-    endif
-    if (len_trim(suffix) == 0) then
-      fnames(n) = trim(restartdir)//trim(timestr)//'.MOM.res.nc'
-    else
-      fnames(n) = trim(restartdir)//trim(timestr)//'.MOM.res'//trim(suffix)//'.nc'
-    endif
-  enddo
-
-  do n = 1,num_rest_files
-    allDone(n) = file_is_complete(mpicomm, is_root_pe(), root_pe(), fnames(n), .false., 0, rc)
-    rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
-
-    if (debug_onroot) then
+  if (debug_onroot) then
+    do n = 1,num_rest_files
       if (allDone(n)) then
         print '(A)',trim(subname)//' restart '//trim(fnames(n))//'  '//trim(importexport)//' complete'
       else
         print '(A)',trim(subname)//' restart '//trim(fnames(n))//'  '//trim(importexport)//' still 0'
       endif
-    endif
-  enddo
+    enddo
+  endif
 
   if (all(allDone) .eqv. .true.) then
     lastrestart = nextTime

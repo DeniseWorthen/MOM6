@@ -53,7 +53,7 @@ end type outputlog_modeltime_type
 character(len=*), parameter :: u_FILE_u =  __FILE__   !< an ESMF message tracker
 
 public :: outputlog_config_type, outputlog_state_type, outputlog_modeltime_type
-public :: get_file_state, get_file_state_atring, file_is_complete, get_unlimited_len
+public :: get_file_state, get_file_state_atring, file_is_complete, get_unlimited_len, track_restn
 public :: get_timestr, get_importexport
 public :: readnml, debug_info, nf90_err
 public :: setrequest, settype, setprefix, set_toffset
@@ -154,6 +154,66 @@ subroutine get_file_state_atring(state_n, comm, isroot, rootpe, rc)
   endif
 
 end subroutine get_file_state_atring
+!> Check all restart parts' completion state
+!!
+!! @param[in]   nextTime        the time basis for this restart's filenames
+!! @param[in]   num_rest_files  the number of restart parts
+!! @param[in]   comm            MPI communicator
+!! @param[in]   isroot          .true. on the root PE
+!! @param[in]   rootpe          the root PE's rank
+!! @param[in]   restartdir      the restart output directory
+!! @param[out]  allDone         per-part completion state, allocated here
+!! @param[out]  fnames          per-part filename, allocated here
+!! @param[out]  rc              return code
+subroutine track_restn(nextTime, num_rest_files, comm, isroot, rootpe, restartdir, allDone, fnames, rc)
+
+  type(ESMF_Time),                 intent(in)  :: nextTime
+  integer,                         intent(in)  :: num_rest_files
+  type(MPI_Comm),                  intent(in)  :: comm
+  logical,                         intent(in)  :: isroot
+  integer,                         intent(in)  :: rootpe
+  character(len=*),                intent(in)  :: restartdir
+  logical,            allocatable, intent(out) :: allDone(:)
+  character(len=256), allocatable, intent(out) :: fnames(:)
+  integer,                         intent(out) :: rc
+
+  integer :: n
+  integer :: year, month, day, hour, minute, seconds
+  character(len=15) :: timestr
+  character(len=8)  :: suffix
+
+  rc = ESMF_SUCCESS
+
+  call ESMF_TimeGet(nextTime, yy=year, mm=month, dd=day, h=hour, m=minute, s=seconds, rc=rc)
+  if (rc /= ESMF_SUCCESS) return
+  write(timestr,'(I4.4,2(I2.2),A,3(I2.2))') year, month, day,".", hour, minute, seconds
+
+  allocate(allDone(num_rest_files))
+  allocate(fnames(num_rest_files))
+  allDone = .false.
+  fnames = ''
+
+  do n = 1,num_rest_files
+    if (n == 1) then
+      suffix = ''
+    else if (n-1 < 10) then
+      write(suffix,'("_",I1)') n-1
+    else
+      write(suffix,'("_",I2)') n-1
+    endif
+    if (len_trim(suffix) == 0) then
+      fnames(n) = trim(restartdir)//trim(timestr)//'.MOM.res.nc'
+    else
+      fnames(n) = trim(restartdir)//trim(timestr)//'.MOM.res'//trim(suffix)//'.nc'
+    endif
+  enddo
+
+  do n = 1,num_rest_files
+    allDone(n) = file_is_complete(comm, isroot, rootpe, fnames(n), .false., 0, rc)
+    rc = merge(ESMF_SUCCESS, ESMF_Failure, rc == 0)
+  enddo
+
+end subroutine track_restn
 !> Retrieve the unlimited dimension length and file size, broadcasting to all PEs
 !!
 !! @param[in]   comm      the MPI communicator
