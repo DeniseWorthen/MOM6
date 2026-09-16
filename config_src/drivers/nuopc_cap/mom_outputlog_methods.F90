@@ -53,7 +53,7 @@ end type outputlog_modeltime_type
 character(len=*), parameter :: u_FILE_u =  __FILE__   !< an ESMF message tracker
 
 public :: outputlog_config_type, outputlog_state_type, outputlog_modeltime_type
-public :: get_file_state, get_file_state_atring, file_is_complete, get_unlimited_len, track_restn
+public :: get_file_state, get_file_state_atring, file_is_complete, get_unlimited_len, track_restn, set_restfname
 public :: get_timestr, get_importexport
 public :: readnml, debug_info, nf90_err
 public :: setrequest, settype, setprefix, set_toffset
@@ -162,31 +162,24 @@ end subroutine get_file_state_atring
 !! @param[in]   isroot          .true. on the root PE
 !! @param[in]   rootpe          the root PE's rank
 !! @param[in]   restartdir      the restart output directory
-!! @param[out]  allDone         per-part completion state, allocated here
-!! @param[out]  fnames          per-part filename, allocated here
+!! @param[out]  allDone         per-part completion state
+!! @param[out]  fnames          per-part filename
 !! @param[out]  rc              return code
 subroutine track_restn(nextTime, num_rest_files, comm, isroot, rootpe, restartdir, allDone, fnames, rc)
 
-  type(ESMF_Time),                 intent(in)  :: nextTime
-  integer,                         intent(in)  :: num_rest_files
-  type(MPI_Comm),                  intent(in)  :: comm
-  logical,                         intent(in)  :: isroot
-  integer,                         intent(in)  :: rootpe
-  character(len=*),                intent(in)  :: restartdir
-  logical,            allocatable, intent(out) :: allDone(:)
-  character(len=256), allocatable, intent(out) :: fnames(:)
-  integer,                         intent(out) :: rc
+  type(ESMF_Time),                  intent(in)  :: nextTime
+  integer,                          intent(in)  :: num_rest_files
+  type(MPI_Comm),                   intent(in)  :: comm
+  logical,                          intent(in)  :: isroot
+  integer,                          intent(in)  :: rootpe
+  character(len=*),                 intent(in)  :: restartdir
+  logical,             allocatable, intent(out) :: allDone(:)
+  character(len=256),  allocatable, intent(out) :: fnames(:)
+  integer,                          intent(out) :: rc
 
   integer :: n
-  integer :: year, month, day, hour, minute, seconds
-  character(len=15) :: timestr
-  character(len=8)  :: suffix
 
   rc = ESMF_SUCCESS
-
-  call ESMF_TimeGet(nextTime, yy=year, mm=month, dd=day, h=hour, m=minute, s=seconds, rc=rc)
-  if (rc /= ESMF_SUCCESS) return
-  write(timestr,'(I4.4,2(I2.2),A,3(I2.2))') year, month, day,".", hour, minute, seconds
 
   allocate(allDone(num_rest_files))
   allocate(fnames(num_rest_files))
@@ -194,18 +187,8 @@ subroutine track_restn(nextTime, num_rest_files, comm, isroot, rootpe, restartdi
   fnames = ''
 
   do n = 1,num_rest_files
-    if (n == 1) then
-      suffix = ''
-    else if (n-1 < 10) then
-      write(suffix,'("_",I1)') n-1
-    else
-      write(suffix,'("_",I2)') n-1
-    endif
-    if (len_trim(suffix) == 0) then
-      fnames(n) = trim(restartdir)//trim(timestr)//'.MOM.res.nc'
-    else
-      fnames(n) = trim(restartdir)//trim(timestr)//'.MOM.res'//trim(suffix)//'.nc'
-    endif
+    fnames(n) = set_restfname(nextTime, n, restartdir, rc)
+    if (rc /= ESMF_SUCCESS) return
   enddo
 
   do n = 1,num_rest_files
@@ -214,6 +197,45 @@ subroutine track_restn(nextTime, num_rest_files, comm, isroot, rootpe, restartdi
   enddo
 
 end subroutine track_restn
+!> Build the filename for restart part `filenumber`
+!!
+!! @param[in]   nextTime    the time basis for this restart's filename
+!! @param[in]   filenumber  the filenumber (1 for no suffix, ie single file)
+!! @param[in]   dir         the restart output directory
+!! @param[out]  rc          return code
+function set_restfname(nextTime, filenumber, dir, rc) result(fname)
+
+  type(ESMF_Time),  intent(in)  :: nextTime
+  integer,          intent(in)  :: filenumber
+  character(len=*), intent(in)  :: dir
+  integer,          intent(out) :: rc
+
+  character(len=256) :: fname
+  character(len=3)   :: suffix
+  character(len=15)  :: timestr
+  integer :: year, month, day, hour, minute, seconds
+
+  rc = ESMF_SUCCESS
+
+  call ESMF_TimeGet(nextTime, yy=year, mm=month, dd=day, h=hour, m=minute, s=seconds, rc=rc)
+  if (rc /= ESMF_SUCCESS) return
+  write(timestr,'(I4.4,2(I2.2),A,3(I2.2))') year, month, day,".", hour, minute, seconds
+
+  if (filenumber == 1) then
+    suffix = ''
+  else if (filenumber-1 < 10) then
+    write(suffix,'("_",I1)') filenumber-1
+  else
+    write(suffix,'("_",I2)') filenumber-1
+  endif
+
+  if (len_trim(suffix) == 0) then
+    fname = trim(dir)//trim(timestr)//'.MOM.res.nc'
+  else
+    fname = trim(dir)//trim(timestr)//'.MOM.res'//trim(suffix)//'.nc'
+  endif
+
+end function set_restfname
 !> Retrieve the unlimited dimension length and file size, broadcasting to all PEs
 !!
 !! @param[in]   comm      the MPI communicator
