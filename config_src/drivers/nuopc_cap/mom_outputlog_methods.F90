@@ -8,10 +8,11 @@
 !> This module contains a set of methods that are required by the UFS outputlog feature
 module mom_outputlog_methods
 
-use ESMF,                   only : ESMF_Alarm, ESMF_TimeInterval, ESMF_Clock
-use ESMF,                   only : ESMF_SUCCESS, ESMF_Failure, ESMF_Time, ESMF_TimeGet
-use MOM_cap_methods,        only : ChkErr
-use mpi_f08,                only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
+use ESMF,            only : ESMF_Alarm, ESMF_TimeInterval, ESMF_Clock
+use ESMF,            only : ESMF_SUCCESS, ESMF_Failure, ESMF_Time, ESMF_TimeGet
+use ESMF,            only : operator(*)
+use MOM_cap_methods, only : ChkErr
+use mpi_f08,         only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
 use netcdf
 
 implicit none; private
