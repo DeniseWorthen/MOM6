@@ -54,11 +54,58 @@ character(len=*), parameter :: u_FILE_u =  __FILE__   !< an ESMF message tracker
 
 public :: outputlog_config_type, outputlog_state_type, outputlog_modeltime_type
 public :: get_file_state, get_file_state_atring, file_is_complete, get_unlimited_len, track_restn, set_restfname
-public :: get_timestr, get_importexport
+public :: setup_freq_config, get_timestr, get_importexport
 public :: readnml, debug_info, nf90_err
 public :: setrequest, settype, setprefix, set_toffset
 
 contains
+!> Set up one frequency's non-alarm configuration and state
+!!
+!! @param[in]     freq_n        this frequency, in hours
+!! @param[in]     nfiles        the number of history files when io_layout is used
+!! @param[in]     mtime         the model time state
+!! @param[inout]  cf_n          this frequency's config
+!! @param[out]    state_n       this frequency's initial state
+!! @param[out]    rc            return code
+subroutine setup_freq_config(freq_n, nfiles, mtime, cf_n, state_n, rc)
+
+  integer,                        intent(in)    :: freq_n
+  integer,                        intent(in)    :: nfiles
+  type(outputlog_modeltime_type), intent(in)    :: mtime
+  type(outputlog_config_type),    intent(inout) :: cf_n
+  type(outputlog_state_type),     intent(out)   :: state_n
+  integer,                        intent(out)   :: rc
+
+  ! local variables
+  character(len=3)   :: chour
+  character(len=256) :: subname='MOM_cap:(setup_freq_config)'
+  !----------------------------------------------------------------------------
+
+  rc = ESMF_SUCCESS
+
+  write(chour,'(I2.2,A)')freq_n,'h'
+  cf_n%alarm_name        = 'output_alarm'//trim(chour)
+  if (nfiles == 1) then
+    cf_n%fnamesuffix     = ''
+  else
+    cf_n%fnamesuffix     = '.0000'
+  endif
+  if (trim(cf_n%timereduce) == 'none') then
+    cf_n%filename_fhoffset = 60*freq_n*mtime%tincrement
+  else
+    cf_n%filename_fhoffset = 90*freq_n*mtime%tincrement
+  endif
+
+  state_n%filename            = ' '
+  state_n%chkfile_nextAdvance = .false.
+  state_n%use_filesize        = .false.
+  state_n%filecomplete        = .false.
+  state_n%createsize          = 0
+  state_n%completesize        = 0
+  state_n%time_lastrestart    = mtime%currTime
+  state_n%time_logfile        = mtime%currTime
+
+end subroutine setup_freq_config
 !> Read nml options to configure output logging
 !!
 !! @param[in]     fname    input namelist file
