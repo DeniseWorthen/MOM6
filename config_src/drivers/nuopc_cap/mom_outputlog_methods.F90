@@ -138,8 +138,8 @@ subroutine readnml(fname, cf, debug, errmsg, rc)
   allocate(outputlog_treduce(1:nfreq))
   allocate(outputlog_fnameprefix(1:nfreq))
   outputlog_fh(:) = 0
-  outputlog_treduce(:) = cf(1:nfreq)%timereduce
-  outputlog_fnameprefix(:) = cf(1:nfreq)%fnameprefix
+  outputlog_treduce(:) = ''
+  outputlog_fnameprefix(:) = ''
   outputlog_debug = .false.
 
   inquire(file=trim(fname), exist=existflag)
