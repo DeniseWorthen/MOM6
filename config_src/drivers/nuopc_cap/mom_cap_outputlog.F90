@@ -61,7 +61,7 @@ use mom_outputlog_methods , only : get_file_state, file_is_complete, get_unlimit
 use mom_outputlog_methods , only : get_timestr, get_importexport
 use mom_outputlog_methods , only : readnml, debug_info
 use mom_outputlog_methods , only : outputlog_config_type, outputlog_state_type, outputlog_modeltime_type
-use mom_outputlog_methods , only : set_toffset, get_file_state_atring
+use mom_outputlog_methods , only : set_toffset, get_file_state_atring, track_restn, setup_freq_config
 use mpi_f08               , only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
 use netcdf
 
@@ -108,13 +108,11 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
   integer, intent(out) :: rc
 
   ! local variables
-  type(ESMF_Time)         :: mcurrTime
   type(ESMF_TimeInterval) :: alarmoffset
   type(directories)       :: dirs
   logical                 :: debug
   integer                 :: n, int_mpic, io_layout(2)
-  integer                 :: year, month, day, hour
-  character(len=3)        :: chour
+  integer                 :: toffset, hour
   character(len=256)      :: msgString
   character(len=256)      :: subname='MOM_cap:(outputlog_init)'
   !----------------------------------------------------------------------------
@@ -133,58 +131,15 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
   io_layout = mpp_get_io_domain_layout(ocean_grid%Domain%mpp_domain)
   nfiles = io_layout(1) * io_layout(2)
 
-  call ESMF_ClockGet(mclock, currTime=mcurrTime, rc=rc)
+  call ESMF_ClockGet(mclock, currTime=modeltime%currTime, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
   call ESMF_TimeIntervalSet(modeltime%tincrement, m=1, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-  call ESMF_TimeGet(mcurrTime, yy=year, mm=month, dd=day, h=hour, rc=rc)
-  if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
   ! initialize
-  lastrestart = mcurrTime
-  do n = 1,n_freq
-    write(chour,'(I2.2,A)')freq(n),'h'
-    cf(n)%alarm_name        = 'output_alarm'//trim(chour)
-    cf(n)%opt_n             = freq(n)
-    cf(n)%requested         = .false.
-    cf(n)%timereduce        = ''
-    cf(n)%fnameprefix       = ''
-    if (nfiles == 1) then
-      cf(n)%fnamesuffix     = ''
-    else
-      cf(n)%fnamesuffix     = '.000'
-    endif
-    cf(n)%filename_fhoffset = 0*modeltime%tincrement
-
-    state(n)%filename            = ' '
-    state(n)%chkfile_nextAdvance = .false.
-    state(n)%use_filesize        = .false.
-    state(n)%filecomplete        = .false.
-    state(n)%createsize          = 0
-    state(n)%completesize        = 0
-    state(n)%time_lastrestart    = lastrestart
-    state(n)%time_logfile        = mcurrTime
-
-    ! the time offset in hours required to ensure the alarm rings at multiples of freq(n)
-    ! regardless of start day/hour
-    toffset = set_toffset(hour, freq(n))
-    alarmoffset = toffset*60*modeltime%tincrement
-
-    call AlarmInit(mclock,                  &
-         alarm     = cf(n)%alarm,           &
-         option    = 'nhours',              &
-         opt_n     = cf(n)%opt_n,           &
-         opt_ymd   = -999,                  &
-         RefTime   = mcurrTime+alarmoffset, &
-         alarmname = cf(n)%alarm_name, rc=rc)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-    call ESMF_AlarmSet(cf(n)%alarm, clock=mclock, rc=rc)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    write(msgString,'(A)')trim(subname)//' Output alarm '//trim(cf(n)%alarm_name)//' Created & Set'
-    call ESMF_LogWrite(trim(msgString), ESMF_LOGMSG_INFO)
-  enddo
+  lastrestart = modeltime%currTime
+  ! opt_n must be set before readnml
+  cf(:)%opt_n = freq(:)
 
   call readnml('input.nml', cf, debug, errmsg, rc=rc)
   rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
@@ -193,33 +148,40 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
 
   debug_onroot = debug .and. is_root_pe()
 
+  call ESMF_TimeGet(modeltime%currTime, h=hour, rc=rc)
+  if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
   do n = 1,n_freq
-    if (trim(cf(n)%timereduce) == 'none') then
-      cf(n)%filename_fhoffset = 60*freq(n)*modeltime%tincrement
-    else
-      cf(n)%filename_fhoffset = 90*freq(n)*modeltime%tincrement
-    endif
-  enddo
+    call setup_freq_config(freq(n), nfiles, modeltime, cf(n), state(n), rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-  ! Snapshots and IO_Layout not yet implemented
-  if (nfiles > 1) then
-    cf(:)%requested = .false.
-    if (is_root_pe())print '(A)',trim(subname)//' output logging unavailable when IO_LAYOUT is used '
-  endif
-  ! do n = 1,n_freq
-  !   if (trim(cf(n)%timereduce) == 'none') then
-  !     cf(n)%requested = .false.
-  !     if (is_root_pe())print '(A)',trim(subname)//' output logging unavailable when Snapshots are requested'
-  !   endif
-  ! enddo
+    ! the time offset in hours required to ensure the alarm rings at multiples of freq(n)
+    ! regardless of start day/hour
+    toffset = set_toffset(hour, freq(n))
+    alarmoffset = toffset*60*modeltime%tincrement
 
-  if (is_root_pe()) then
-    do n = 1,n_freq
+    call AlarmInit(mclock,                            &
+         alarm     = cf(n)%alarm,                     &
+         option    = 'nhours',                        &
+         opt_n     = cf(n)%opt_n,                     &
+         opt_ymd   = -999,                            &
+         RefTime   = modeltime%currTime+alarmoffset,  &
+         alarmname = cf(n)%alarm_name, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+    call ESMF_AlarmSet(cf(n)%alarm, clock=mclock, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    write(msgString,'(A)')trim(subname)//' Output alarm '//trim(cf(n)%alarm_name)//' Created & Set'
+    call ESMF_LogWrite(trim(msgString), ESMF_LOGMSG_INFO)
+
+    if (is_root_pe()) then
       print '(A,i8)',trim(subname)//' toffset = ',toffset
       call ESMF_TimeIntervalPrint(cf(n)%filename_fhoffset, options="string", rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    enddo
+    endif
+  enddo
 
+  if (is_root_pe()) then
     do n = 1,n_freq
       if (cf(n)%requested) print '(A,i6,A)',trim(subname)//' output requested: freq (hours)= ' &
            ,cf(n)%opt_n,', time_reduction= '//cf(n)%timereduce
@@ -343,8 +305,7 @@ subroutine track_freqn(mtime, cf_n, state_n, comm, isroot, rootpe, outputdir, la
 
       timestr = get_timestr(mtime%nextTime-cf_n%filename_fhoffset, rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-      state_n%filename = trim(outputdir)//trim(cf_n%fnameprefix)//trim(timestr)//'.nc' &
-           //trim(cf_n%fnamesuffix)
+      state_n%filename = trim(outputdir)//trim(cf_n%fnameprefix)//trim(timestr)//'.nc'//trim(cf_n%fnamesuffix)
 
       call get_file_state_atring(state_n, comm, isroot, rootpe, rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -384,8 +345,7 @@ subroutine track_freqn(mtime, cf_n, state_n, comm, isroot, rootpe, outputdir, la
      timestr = get_timestr(state_n%prevring-30*cf_n%opt_n*mtime%tincrement, rc=rc)
      if (ChkErr(rc,__LINE__,u_FILE_u)) return
     endif
-    state_n%filename = trim(outputdir)//trim(cf_n%fnameprefix)//trim(timestr)//'.nc' &
-         //trim(cf_n%fnamesuffix)
+    state_n%filename = trim(outputdir)//trim(cf_n%fnameprefix)//trim(timestr)//'.nc'//trim(cf_n%fnamesuffix)
 
     call get_file_state(comm, isroot, rootpe, state_n%filename, nlen=nlen, fsize=fsize, rc=rc)
     rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
@@ -420,15 +380,12 @@ subroutine outputlog_restart(mclock, num_rest_files, rc)
   integer, intent(out) :: rc
 
   ! local variables
-  type(ESMF_Time)      :: startTime, currTime, nextTime
-  integer              :: n, nlen
-  integer              :: year, month, day, hour, minute, seconds
-  character(len=256)   :: fname
-  character(len=15)    :: timestr
-  character(len=40)    :: importexport
-  logical, allocatable :: allDone(:)
-  character(len=8)     :: suffix
-  character(len=256)   :: subname='MOM_cap:(outputlog_restart)'
+  type(ESMF_Time)                 :: startTime, currTime, nextTime
+  integer                         :: n
+  character(len=40)               :: importexport
+  logical,            allocatable :: allDone(:)
+  character(len=256), allocatable :: fnames(:)
+  character(len=256)              :: subname='MOM_cap:(outputlog_restart)'
   !----------------------------------------------------------------------------
 
   rc = ESMF_SUCCESS
@@ -440,41 +397,18 @@ subroutine outputlog_restart(mclock, num_rest_files, rc)
   importexport = get_importexport(currTime, nextTime, rc=rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
-  call ESMF_TimeGet(nextTime, yy=year, mm=month, dd=day, h=hour, m=minute, s=seconds, rc=rc )
+  call track_restn(nextTime, num_rest_files, mpicomm, is_root_pe(), root_pe(), restartdir, allDone, fnames, rc)
   if (ChkErr(rc,__LINE__,u_FILE_u)) return
-  write(timestr,'(I4.4,2(I2.2),A,3(I2.2))') year, month, day,".", hour, minute, seconds
 
-  allocate(allDone(1:num_rest_files))
-  allDone = .false.
-
-  do n = 1,num_rest_files
-    if (n == 1) then
-      suffix = ''
-    else if (n-1 < 10) then
-      write(suffix,'("_",I1)') n-1
-    else
-      write(suffix,'("_",I2)') n-1
-    endif
-    if (len_trim(suffix) == 0) then
-      fname = trim(restartdir)//trim(timestr)//'.MOM.res.nc'
-    else
-      fname = trim(restartdir)//trim(timestr)//'.MOM.res'//trim(suffix)//'.nc'
-    endif
-
-    ! check if file is written
-    call get_file_state(mpicomm, is_root_pe(), root_pe(), fname, nlen=nlen, rc=rc)
-    rc = merge(ESMF_SUCCESS, ESMF_FAILURE, rc == 0)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-    if (nlen > 0) allDone(n) = .true.
-    if (debug_onroot) then
-      if (nlen > 0) then
-        print '(A)',trim(subname)//' restart '//trim(fname)//'  '//trim(importexport)//' complete'
+  if (debug_onroot) then
+    do n = 1,num_rest_files
+      if (allDone(n)) then
+        print '(A)',trim(subname)//' restart '//trim(fnames(n))//'  '//trim(importexport)//' complete'
       else
-        print '(A)',trim(subname)//' restart '//trim(fname)//'  '//trim(importexport)//' still 0'
+        print '(A)',trim(subname)//' restart '//trim(fnames(n))//'  '//trim(importexport)//' still 0'
       endif
-    endif
-  enddo ! num_rest_files
+    enddo
+  endif
 
   if (all(allDone) .eqv. .true.) then
     lastrestart = nextTime

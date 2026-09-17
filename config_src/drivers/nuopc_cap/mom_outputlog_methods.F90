@@ -8,10 +8,11 @@
 !> This module contains a set of methods that are required by the UFS outputlog feature
 module mom_outputlog_methods
 
-use ESMF,                   only : ESMF_Alarm, ESMF_TimeInterval, ESMF_Clock
-use ESMF,                   only : ESMF_SUCCESS, ESMF_Failure, ESMF_Time, ESMF_TimeGet
-use MOM_cap_methods,        only : ChkErr
-use mpi_f08,                only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
+use ESMF,            only : ESMF_Alarm, ESMF_TimeInterval, ESMF_Clock
+use ESMF,            only : ESMF_SUCCESS, ESMF_Failure, ESMF_Time, ESMF_TimeGet
+use ESMF,            only : operator(*)
+use MOM_cap_methods, only : ChkErr
+use mpi_f08,         only : MPI_Comm, MPI_INTEGER, MPI_SUCCESS
 use netcdf
 
 implicit none; private
@@ -23,7 +24,7 @@ type :: outputlog_config_type
   logical                 :: requested         !< if true, output logging at this freq is desired
   character(len=7)        :: timereduce        !< snapshot or average time treatment of output, default='average'
   character(len=13)       :: fnameprefix       !< user provided filename prefix, default='ocn'
-  character(len=4)        :: fnamesuffix       !< filename suffix if io_layout is in use, default = ''
+  character(len=5)        :: fnamesuffix       !< filename suffix if io_layout is in use, default = ''
   type(ESMF_Alarm)        :: alarm             !< ESMF_Alarm associated with this freq
   type(ESMF_TimeInterval) :: filename_fhoffset !< ESMF_TimeInterval offset between tracked file completion and name
 end type outputlog_config_type
@@ -53,12 +54,59 @@ end type outputlog_modeltime_type
 character(len=*), parameter :: u_FILE_u =  __FILE__   !< an ESMF message tracker
 
 public :: outputlog_config_type, outputlog_state_type, outputlog_modeltime_type
-public :: get_file_state, get_file_state_atring, file_is_complete, get_unlimited_len
-public :: get_timestr, get_importexport
+public :: get_file_state, get_file_state_atring, file_is_complete, get_unlimited_len, track_restn, set_restfname
+public :: setup_freq_config, get_timestr, get_importexport
 public :: readnml, debug_info, nf90_err
 public :: setrequest, settype, setprefix, set_toffset
 
 contains
+!> Set up one frequency's non-alarm configuration and state
+!!
+!! @param[in]     freq_n        this frequency, in hours
+!! @param[in]     nfiles        the number of history files when io_layout is used
+!! @param[in]     mtime         the model time state
+!! @param[inout]  cf_n          this frequency's config
+!! @param[out]    state_n       this frequency's initial state
+!! @param[out]    rc            return code
+subroutine setup_freq_config(freq_n, nfiles, mtime, cf_n, state_n, rc)
+
+  integer,                        intent(in)    :: freq_n
+  integer,                        intent(in)    :: nfiles
+  type(outputlog_modeltime_type), intent(in)    :: mtime
+  type(outputlog_config_type),    intent(inout) :: cf_n
+  type(outputlog_state_type),     intent(out)   :: state_n
+  integer,                        intent(out)   :: rc
+
+  ! local variables
+  character(len=3)   :: chour
+  character(len=256) :: subname='MOM_cap:(setup_freq_config)'
+  !----------------------------------------------------------------------------
+
+  rc = ESMF_SUCCESS
+
+  write(chour,'(I2.2,A)')freq_n,'h'
+  cf_n%alarm_name        = 'output_alarm'//trim(chour)
+  if (nfiles == 1) then
+    cf_n%fnamesuffix     = ''
+  else
+    cf_n%fnamesuffix     = '.0000'
+  endif
+  if (trim(cf_n%timereduce) == 'none') then
+    cf_n%filename_fhoffset = 60*freq_n*mtime%tincrement
+  else
+    cf_n%filename_fhoffset = 90*freq_n*mtime%tincrement
+  endif
+
+  state_n%filename            = ' '
+  state_n%chkfile_nextAdvance = .false.
+  state_n%use_filesize        = .false.
+  state_n%filecomplete        = .false.
+  state_n%createsize          = 0
+  state_n%completesize        = 0
+  state_n%time_lastrestart    = mtime%currTime
+  state_n%time_logfile        = mtime%currTime
+
+end subroutine setup_freq_config
 !> Read nml options to configure output logging
 !!
 !! @param[in]     fname    input namelist file
@@ -90,8 +138,8 @@ subroutine readnml(fname, cf, debug, errmsg, rc)
   allocate(outputlog_treduce(1:nfreq))
   allocate(outputlog_fnameprefix(1:nfreq))
   outputlog_fh(:) = 0
-  outputlog_treduce(:) = cf(1:nfreq)%timereduce
-  outputlog_fnameprefix(:) = cf(1:nfreq)%fnameprefix
+  outputlog_treduce(:) = ''
+  outputlog_fnameprefix(:) = ''
   outputlog_debug = .false.
 
   inquire(file=trim(fname), exist=existflag)
@@ -154,6 +202,88 @@ subroutine get_file_state_atring(state_n, comm, isroot, rootpe, rc)
   endif
 
 end subroutine get_file_state_atring
+!> Check all restart parts' completion state
+!!
+!! @param[in]   nextTime        the time basis for this restart's filenames
+!! @param[in]   num_rest_files  the number of restart parts
+!! @param[in]   comm            MPI communicator
+!! @param[in]   isroot          .true. on the root PE
+!! @param[in]   rootpe          the root PE's rank
+!! @param[in]   restartdir      the restart output directory
+!! @param[out]  allDone         per-part completion state
+!! @param[out]  fnames          per-part filename
+!! @param[out]  rc              return code
+subroutine track_restn(nextTime, num_rest_files, comm, isroot, rootpe, restartdir, allDone, fnames, rc)
+
+  type(ESMF_Time),                  intent(in)  :: nextTime
+  integer,                          intent(in)  :: num_rest_files
+  type(MPI_Comm),                   intent(in)  :: comm
+  logical,                          intent(in)  :: isroot
+  integer,                          intent(in)  :: rootpe
+  character(len=*),                 intent(in)  :: restartdir
+  logical,             allocatable, intent(out) :: allDone(:)
+  character(len=256),  allocatable, intent(out) :: fnames(:)
+  integer,                          intent(out) :: rc
+
+  integer :: n
+
+  rc = ESMF_SUCCESS
+
+  allocate(allDone(num_rest_files))
+  allocate(fnames(num_rest_files))
+  allDone = .false.
+  fnames = ''
+
+  do n = 1,num_rest_files
+    fnames(n) = set_restfname(nextTime, n, restartdir, rc)
+    if (rc /= ESMF_SUCCESS) return
+  enddo
+
+  do n = 1,num_rest_files
+    allDone(n) = file_is_complete(comm, isroot, rootpe, fnames(n), .false., 0, rc)
+    rc = merge(ESMF_SUCCESS, ESMF_Failure, rc == 0)
+  enddo
+
+end subroutine track_restn
+!> Build the filename for restart part `filenumber`
+!!
+!! @param[in]   nextTime    the time basis for this restart's filename
+!! @param[in]   filenumber  the filenumber (1 for no suffix, ie single file)
+!! @param[in]   dir         the restart output directory
+!! @param[out]  rc          return code
+function set_restfname(nextTime, filenumber, dir, rc) result(fname)
+
+  type(ESMF_Time),  intent(in)  :: nextTime
+  integer,          intent(in)  :: filenumber
+  character(len=*), intent(in)  :: dir
+  integer,          intent(out) :: rc
+
+  character(len=256) :: fname
+  character(len=3)   :: suffix
+  character(len=15)  :: timestr
+  integer :: year, month, day, hour, minute, seconds
+
+  rc = ESMF_SUCCESS
+
+  call ESMF_TimeGet(nextTime, yy=year, mm=month, dd=day, h=hour, m=minute, s=seconds, rc=rc)
+  if (rc /= ESMF_SUCCESS) return
+  write(timestr,'(I4.4,2(I2.2),A,3(I2.2))') year, month, day,".", hour, minute, seconds
+
+  if (filenumber == 1) then
+    suffix = ''
+  else if (filenumber-1 < 10) then
+    write(suffix,'("_",I1)') filenumber-1
+  else
+    write(suffix,'("_",I2)') filenumber-1
+  endif
+
+  if (len_trim(suffix) == 0) then
+    fname = trim(dir)//trim(timestr)//'.MOM.res.nc'
+  else
+    fname = trim(dir)//trim(timestr)//'.MOM.res'//trim(suffix)//'.nc'
+  endif
+
+end function set_restfname
 !> Retrieve the unlimited dimension length and file size, broadcasting to all PEs
 !!
 !! @param[in]   comm      the MPI communicator
