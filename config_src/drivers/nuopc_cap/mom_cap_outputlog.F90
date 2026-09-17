@@ -163,7 +163,7 @@ subroutine outputlog_init(gcomp, mclock, ocean_grid, rc)
     call AlarmInit(mclock,                            &
          alarm     = cf(n)%alarm,                     &
          option    = 'nhours',                        &
-         opt_n     = freq(n),                         &
+         opt_n     = cf(n)%opt_n,                     &
          opt_ymd   = -999,                            &
          RefTime   = modeltime%currTime+alarmoffset,  &
          alarmname = cf(n)%alarm_name, rc=rc)
